@@ -1,0 +1,36 @@
+---
+title: "test presentation"
+author: "maham hassan"
+format: revealjs
+---
+
+---
+title: "Homemade Eats"
+author: "Maham"
+format: revealjs
+---
+
+## Beef Bowl
+
+![](/Users/mahamhassan/Downloads/IMG_0265.png){width=50%}
+
+- Hot Honey
+- ground beef
+- sweet potato
+- avocado
+
+## Going to sleep
+
+- Get in bed
+- Count sheep
+```{r}
+##if(!require("tidyverse")) install.packages("tidyverse")
+library(tidyverse)
+txhousing |> 
+  filter(city=="Houston") |> 
+  group_by(year) |> 
+  summarize(sales=sum(sales)) |> 
+  ggplot(aes(x=year, y=sales)) + 
+    geom_line() + 
+    ggtitle("Annual Houses Sold in Houston, TX")
+```

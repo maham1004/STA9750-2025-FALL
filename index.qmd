@@ -1,12 +1,25 @@
 ---
-title: "About Me"
+title: "Hi I'm Maham"
 ---
 
-![Me at Niagara Falls](IMG_1889.jpg){width=38%}
+![](IMG_1889.jpg){fig-align="center" width=38%}
+
+<center>*Me at Niagara Falls this past summer*
+  
+  
+  
+</center>
 
 
-Hello and welcome to my website! My name is **Maham Hassan**.
-I am a student at Baruch College working toward earning my Masters degree in Statistics. Prior to this I worked in public finance in the fixed income space as a municipal advisor. I did my undergrad in Math and Economics from Bryn Mawr College in Philadelphia and graduated in 2022. 
+
+   Hello and welcome to my website! My name is **Maham Hassan**.
+
+  I am a student at Baruch College working toward earning my Masters degree in Statistics. Here you will find some projects I have completed. 
+  ````{r}
+
+[Open my Resume](mahamhassan/maham_hassan_resume.pdf){target="_blank"}
+  
+  Prior to this I worked in public finance in the fixed income space as a municipal advisor. I did my undergrad in Math and Economics from Bryn Mawr College in Philadelphia and graduated in 2022. I'm looking to build my technical skills and learn how to work with data sets.
 
 
 ```{r}
@@ -29,10 +42,4 @@ leaflet() |>
   addPopups(baruch_longitude, baruch_latitude, 
             "I am a Master's student at <b>Baruch College</b>!")
 ```
-
-```{r}
-#| include: false
-1+1
-```
---------------
 Last Updated: `r format(Sys.time(), "%A %m %d, %Y at %H:%M%p")`
