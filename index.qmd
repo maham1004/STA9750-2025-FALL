@@ -17,7 +17,6 @@ title: "Hi I'm Maham"
   I am a student at Baruch College working toward earning my Masters degree in Statistics. Here you will find some projects I have completed. 
   ````{r}
 
-[Open my Resume](mahamhassan/maham_hassan_resume.pdf){target="_blank"}
   
   Prior to this I worked in public finance in the fixed income space as a municipal advisor. I did my undergrad in Math and Economics from Bryn Mawr College in Philadelphia and graduated in 2022. I'm looking to build my technical skills and learn how to work with data sets.
 

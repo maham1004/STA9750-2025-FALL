@@ -1,0 +1,11 @@
+---
+title: "STA 9750 — Mini-Project 01"
+author: Maham Hassan
+date: September 22, 2025
+format:
+  html:
+    code-fold: true
+    toc: true
+---
+
+```{r}
