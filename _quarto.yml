@@ -16,8 +16,9 @@ website:
 
 format:
   html:
-    theme: morph
+    theme: morphe   
     toc: false
+
 
 editor:
   mode: source
