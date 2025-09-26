@@ -7,5 +7,50 @@ format:
     code-fold: true
     toc: true
 ---
-
 ```{r}
+if(!dir.exists(file.path("data", "mp01"))){
+    dir.create(file.path("data", "mp01"), showWarnings=FALSE, recursive=TRUE)
+}
+GLOBAL_TOP_10_FILENAME <- file.path("data", "mp01", "global_top10_alltime.csv")
+
+if(!file.exists(GLOBAL_TOP_10_FILENAME)){
+    download.file("https://www.netflix.com/tudum/top10/data/all-weeks-global.tsv", 
+                  destfile=GLOBAL_TOP_10_FILENAME)
+}
+# install if missing, then load
+if(!requireNamespace("DT", quietly = TRUE)) install.packages("DT")
+library(DT)
+packageVersion("DT")
+
+COUNTRY_TOP_10_FILENAME <- file.path("data", "mp01", "country_top10_alltime.csv")
+
+if(!file.exists(COUNTRY_TOP_10_FILENAME)){
+    download.file("https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv", 
+                  destfile=COUNTRY_TOP_10_FILENAME)
+}
+if(!require("tidyverse")) install.packages("tidyverse")
+library(readr)
+library(dplyr)
+
+GLOBAL_TOP_10 <- read_tsv(GLOBAL_TOP_10_FILENAME)
+
+# Convert "N/A" to NA in the season_title column
+GLOBAL_TOP_10 <- GLOBAL_TOP_10 %>%
+  mutate(season_title = if_else(season_title == "N/A", NA_character_, season_title))
+
+  COUNTRY_TOP_10 <- read_tsv(COUNTRY_TOP_10_FILENAME, na = "N/A", show_col_types = FALSE)
+  
+# Install and load the DT package
+
+library(DT)
+# Make sure DT is loaded in setup chunk (library(DT))
+# Show first 20 rows as an interactive table in the HTML output
+GLOBAL_TOP_10 |>
+  head(n = 20) |>
+  datatable(
+    options = list(searching = FALSE, info = FALSE),
+    rownames = FALSE
+  )
+```
+
+

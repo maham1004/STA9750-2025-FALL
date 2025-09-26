@@ -8,7 +8,7 @@ website:
   site-url: "https://maham1004.github.io/STA9750-2025-FALL/"
   navbar:
     search: false
-    menu:
+    right:
       - text: "Home"
         href: index.html
       - text: "Mini-Project 01"
@@ -16,7 +16,7 @@ website:
 
 format:
   html:
-    theme: morphe   
+    theme: morph   
     toc: false
 
 
