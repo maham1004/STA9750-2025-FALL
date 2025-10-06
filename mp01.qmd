@@ -104,7 +104,7 @@ GLOBAL_TOP_10 |>
 colnames(GLOBAL_TOP_10)
 ```
 
-## Column Cames for Country Data
+## Column Names for Country Data
 ```{r}
 colnames(COUNTRY_TOP_10)
 ```
