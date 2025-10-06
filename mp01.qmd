@@ -427,7 +427,8 @@ process_month <- function(year_i, month_i, label_i) {
     ))
   }
   
-  # Summarize per title, I also filtered out movies with runtimes shorter than 1.8
+  # Summarize per title, I assumed that the non english films would be hindi and
+  # I also assumed and filtered out movies with runtimes shorter than 1.8
   #  based on cultural contaxt, most hindi
   #  films have runtimes over 1.75, whereas most westerns ones do not.
   matched_noneng |>
@@ -487,7 +488,7 @@ ggplot(monthly_totals, aes(x = factor(month, levels = c("Feb 2025", "Apr 2025", 
   theme_minimal()
 #No increasing correlation is shown.
 ```
-# Press Release 3: Open Topic
+# **Press Release 3: Open Topic**
 ```{r}
 knitr::include_graphics("images/kpop.jpg")
 ```
