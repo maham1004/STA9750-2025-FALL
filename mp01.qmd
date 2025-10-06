@@ -7,8 +7,9 @@ format:
     code-fold: true
     toc: true
 ---
-# Tasks 1-3
+# Tasks 1-3 (Set Up)
 ```{r}
+#| include: false
 if(!dir.exists(file.path("data", "mp01"))){
     dir.create(file.path("data", "mp01"), showWarnings=FALSE, recursive=TRUE)
 }
@@ -18,7 +19,7 @@ if(!file.exists(GLOBAL_TOP_10_FILENAME)){
     download.file("https://www.netflix.com/tudum/top10/data/all-weeks-global.tsv", 
                   destfile=GLOBAL_TOP_10_FILENAME)
 }
-```{r setup}
+
 # Install if missing
 if(!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
 if(!requireNamespace("DT", quietly = TRUE)) install.packages("DT")
@@ -62,7 +63,9 @@ library(DT)
     #rownames = FALSE
   #)
 ```
+
 ```{r}
+#| include: false
 library(stringr)
 format_titles <- function(df){
     colnames(df) <- str_replace_all(colnames(df), "_", " ") |> str_to_title()
@@ -95,16 +98,16 @@ GLOBAL_TOP_10 |>
     formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
 ```
 
-column names for global data
+## Column Names for Global Data
 ```{r}
 colnames(GLOBAL_TOP_10)
 ```
 
-column names for country data
+## Column Cames for Country Data
 ```{r}
 colnames(COUNTRY_TOP_10)
 ```
-**Exploratory Data Anlalysis**
+# **Exploratory Data Anlalysis**
 
 
 1. How many different countries does Netflix operate in? (You can use the viewing history as a proxy for countries in which Netflix operates.)
