@@ -383,7 +383,17 @@ Jaat (Jun): 9.4 million estimated views
 These figures demonstrate the widespread appeal of Hindi films and provide a meaningful estimate of Netflix’s growing consumer base in India. With multiple top-performing Hindi films each month, Netflix is positioned to continue expanding its engagement in one of the world’s largest streaming markets.
 
 ```{r}
-#We will take the top ten india data from the country dataset and #use a few different months in 2025. this data will only include non #english top ten titles in india to assume that those are hindi. Now #we will use this data to search up all these titles in the global #dataset. This will allow us to make a table that includes the #columns cummulative weeks in top ten, weekly_hours_viewed, runtime, #and weekly hours viewed divided by runtime. We will also take an #average of the times watched column so that we can find the #estimated customer base
+#We will take the top ten india data from the country dataset and 
+#use a few different months in 2025. this data will only include 
+#non 
+#english top ten titles in india to assume that those are hindi. Now 
+#we will use this data to search up all these titles in the global #dataset. 
+#This will allow us to make a table that includes the #columns cummulative weeks in top ten, 
+#weekly_hours_viewed, runtime,
+
+# #and weekly hours viewed divided by runtime.
+#  We will also take an #average of the times 
+#  watched column so that we can find the #estimated customer base
 
 library(dplyr)
 library(lubridate)
