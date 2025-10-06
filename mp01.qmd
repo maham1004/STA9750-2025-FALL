@@ -9,7 +9,6 @@ format:
 ---
 # Tasks 1-3 (Set Up)
 ```{r}
-#| include: false
 if(!dir.exists(file.path("data", "mp01"))){
     dir.create(file.path("data", "mp01"), showWarnings=FALSE, recursive=TRUE)
 }
@@ -65,7 +64,6 @@ library(DT)
 ```
 
 ```{r}
-#| include: false
 library(stringr)
 format_titles <- function(df){
     colnames(df) <- str_replace_all(colnames(df), "_", " ") |> str_to_title()
