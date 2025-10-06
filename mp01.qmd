@@ -8,7 +8,8 @@ format:
     toc: true
 ---
 # Tasks 1-3 (Set Up)
-```{r}
+```{r, results='hide', message=FALSE, warning=FALSE}
+
 if(!dir.exists(file.path("data", "mp01"))){
     dir.create(file.path("data", "mp01"), showWarnings=FALSE, recursive=TRUE)
 }
@@ -53,36 +54,38 @@ COUNTRY_TOP_10 <- read_tsv(COUNTRY_TOP_10_FILENAME, na = "N/A", show_col_types =
 # Install and load the DT package
 
 library(DT)
-# Make sure DT is loaded in setup chunk (library(DT))
-# Show first 20 rows as an interactive table in the HTML output
-#GLOBAL_TOP_10 |>
-  #head(n = 20) |>
- # datatable(
-   # options = list(searching = FALSE, info = FALSE),
-    #rownames = FALSE
-  #)
+#Make sure DT is loaded in setup chunk (library(DT))
+#Show first 20 rows as an interactive table in the HTML output
+GLOBAL_TOP_10 |>
+  head(n = 20) |>
+  datatable(
+    options = list(searching = FALSE, info = FALSE),
+    rownames = FALSE
+  )
 ```
 
-```{r}
+```{r, results='hide', message=FALSE, warning=FALSE}
+
 library(stringr)
 format_titles <- function(df){
     colnames(df) <- str_replace_all(colnames(df), "_", " ") |> str_to_title()
     df
 }
 
-#GLOBAL_TOP_10 |> 
-    #format_titles() |>
-   # head(n=20) |>
-    #datatable(options=list(searching=FALSE, info=FALSE)) |>
-    #formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
+GLOBAL_TOP_10 |> 
+    format_titles() |>
+   head(n=20) |>
+    datatable(options=list(searching=FALSE, info=FALSE)) |>
+    formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
 ```
-```{r}
-#GLOBAL_TOP_10 |> 
-    #select(-season_title) |>
-    #format_titles() |>
-   # head(n=20) |>
-   # datatable(options=list(searching=FALSE, info=FALSE)) |>
-   # formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
+```{r, results='hide', message=FALSE, warning=FALSE}
+
+GLOBAL_TOP_10 |> 
+  select(-season_title) |>
+  format_titles() |>
+   head(n=20) |>
+   datatable(options=list(searching=FALSE, info=FALSE)) |>
+   formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
 ```
 # Interactive Data Table for Global Data
 ```{r}
