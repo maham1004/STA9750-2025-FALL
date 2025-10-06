@@ -87,7 +87,7 @@ GLOBAL_TOP_10 |>
    datatable(options=list(searching=FALSE, info=FALSE)) |>
    formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
 ```
-# **Interactive Data Table for Global Data
+# **Interactive Data Table for Global Data**
 ```{r}
 GLOBAL_TOP_10 |> 
     mutate(`runtime_(minutes)` = round(60 * runtime)) |>
