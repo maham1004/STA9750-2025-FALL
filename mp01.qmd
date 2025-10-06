@@ -324,7 +324,7 @@ Stranger Things continues to captivate audiences worldwide, boasting nearly 3 bi
 
 With Season 5, Netflix is expected to deliver a conclusion worthy of one of its most iconic original series, keeping millions around the world glued to their screens.
 
-```{r}
+```{r, results='hide', message=FALSE, warning=FALSE}
 ## Number of weeks in top 10
 # Filter for Stranger Things cummulative weeks in top 10 
 stranger_things_total_weeks <- COUNTRY_TOP_10 |>
@@ -342,7 +342,7 @@ stranger_things_total_weeks
 ```
 
 
-```{r}
+```{r, results='hide', message=FALSE, warning=FALSE}
 ## Total hours viewed
 stranger_things_viewership_hours <- GLOBAL_TOP_10 |>
   filter(show_title == "Stranger Things") |>
@@ -351,7 +351,7 @@ stranger_things_viewership_hours <- GLOBAL_TOP_10 |>
 stranger_things_viewership_hours
 ```
 
-```{r}
+```{r, results='hide', message=FALSE, warning=FALSE}
 ## Number of countires it charted in
 stranger_things_countries <- COUNTRY_TOP_10 |>
   filter(show_title == "Stranger Things")
@@ -464,17 +464,22 @@ process_month <- function(year_i, month_i, label_i) {
 # run for each month and combine
 results_list <- lapply(months_to_do, function(m) process_month(m$year, m$month, m$label))
 combined_tbl <- bind_rows(results_list)
-
+```
+### Table of Hindi films that made the global top ten list in  various months in 2025:
+```{r}
 # show combined table
 print(combined_tbl, n = Inf)
-
-# Estimate the number of Indian Netflix users based on the est_views column
+```
+Estimate of the number of Indian Netflix users based on the est_views column
+```{r}
 estimated_indian_users <- combined_tbl |>
   summarize(avg_est_views = mean(est_views, na.rm = TRUE)) |>
   pull(avg_est_views)
 
 # Display the estimate
 estimated_indian_users
+```
+```{r, results='hide', message=FALSE, warning=FALSE}
 
 # Monthly totals in hours and converted to thousands for plotting
 monthly_totals <- combined_tbl |>
@@ -517,7 +522,7 @@ Critics and fans alike are calling it a global pop culture phenomenon, blending 
 
 With KPop Demon Hunters, Netflix has proven once again that global storytelling knows no borders.
 
-```{r}
+```{r, results='hide', message=FALSE, warning=FALSE}
 #Getting data for Kpop Demon Hunter Press release
 # Filter for KPop Demon Hunters in the global dataset
 
