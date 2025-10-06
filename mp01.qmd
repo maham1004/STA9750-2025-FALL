@@ -306,7 +306,7 @@ top_debut_show
 
 ```
 
-# **Stranger Things Press Release**
+# **Press Release 1: Stranger Things Finale**
 ```{r}
 #| fig-align: "center"
 #| out-width: "40%"
@@ -493,7 +493,7 @@ ggplot(monthly_totals, aes(x = factor(month, levels = c("Feb 2025", "Apr 2025", 
   geom_line() +
   geom_point(size = 3) +
   labs(
-    title = "Total viewing hours (non-English films that charted in India)",
+    title = "Total viewing hours (Non-English films that charted in India)",
     subtitle = "Feb / Apr / Jun / Aug 2025 — totals shown in ten-thousands of hours",
     x = "Month (2025)",
     y = "Total viewing hours (tenthousands)"
