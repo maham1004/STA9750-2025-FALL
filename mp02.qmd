@@ -1473,13 +1473,10 @@ housing_growth_pct_change
 ## Backyards For All Bill: Why All Americans Deserve Affordable Housing
 
 
-##### Background
-
 America’s housing shortage continues to push rents upward in many major metropolitan cities, New York being one of the most dire examples, with only around 1% of housing units are vacant. As a result, many working class people are either getting pushed out of their cities, or suffering a loss in standard of living year over year. With general inflation running rampant in recent years, it is imperative that a change be made to bring releif to everyday Americans. 
 
 This proposal establishes a competitive federal program that rewards cities for modernizing zoning, approving homes more efficiently, and reducing rent burdens. The goal is simple: accelerate homebuilding in the places where Americans already live, work, and want to stay.
 
-##### Proposed Bill Sponsors
 
 **Primary sponsor**: 
 
@@ -1489,7 +1486,7 @@ A congressional representative from Rocky Mount, NC Metro Area — one of the cl
 
 A congressional representative from New York City, NY Metro Area — a high-rent, slower-to-build region where the affordability crisis is sharpest and federal incentives would have the biggest impact. 
 
-**Support groups:**: 
+**Support groups:** 
 
 Mobilize Nurses and other healthcare workers (SEIU, National Nurses United).
 
