@@ -1080,7 +1080,7 @@ datatable(
     pageLength = 20,
     autoWidth = TRUE
   ),
-  caption = htmltools::tags$caption(
+   caption = htmltools::tags$caption(
     style = 'caption-side: top; text-align: left; margin-bottom: 10px;',
     htmltools::tags$div(
       style = 'font-size: 16pt; font-weight: bold;',
@@ -1481,9 +1481,13 @@ This proposal establishes a competitive federal program that rewards cities for 
 
 ##### Proposed Bill Sponsors
 
-**Primary sponsor**: A congressional representative from Rocky Mount, NC Metro Area — one of the clearest YIMBY successes in our analysis. Rocky Mount permitted housing at strong per-capita levels and saw a meaningful decline in rent burden over time. Rocky Mount is an ideal sponsor becasue they were able to implement a 28% increase in housing growth which led to a 20% decrease in rent burden for their population.
+**Primary sponsor**: 
 
-**Co-sponsor**: A congressional representative from New York City, NY Metro Area — a high-rent, slower-to-build region where the affordability crisis is sharpest and federal incentives would have the biggest impact. 
+A congressional representative from Rocky Mount, NC Metro Area — one of the clearest YIMBY successes in our analysis. Rocky Mount permitted housing at strong per-capita levels and saw a meaningful decline in rent burden over time. Rocky Mount is an ideal sponsor becasue they were able to implement a 28% increase in housing growth which led to a 20% decrease in rent burden for their population.
+
+**Co-sponsor**: 
+
+A congressional representative from New York City, NY Metro Area — a high-rent, slower-to-build region where the affordability crisis is sharpest and federal incentives would have the biggest impact. 
 
 **Support groups:**: 
 
@@ -1495,23 +1499,32 @@ Teachers and school staff (AFT, NEA).
 Educators make up a large, locally rooted voting bloc in both metros. Lower rent burden helps teachers stay in their districts instead of commuting long distances or leaving the profession. Currently, 33% of teachers in NYC live outside of the city due to high rent prices (Independent Budget Office 2019). 
 
 **What the program funds:**
+
 - Performance-based grants for cities that legalize more homes near jobs and transit, digitize their permitting processes, and demonstrate progress in lowering rent burden.
+
 - Technical assistance including model zoning codes and pre-approved residential plans.
 
 **How we measure success:**
+
 - Rent-burden index: We compare typical rent to typical household income and scale everything so 2009 = 100. When a city’s index falls below 100 over time, residents are spending a smaller share of their income on rent, this is a clear sign of improved affordability.
+
 - Housing-growth metrics: Permits per 10,000 residents: A per-capita measure of how much a city is building today, allowing for fair comparison across metros.
+
 - Growth-adjusted index: Permits relative to each city’s five-year population growth, answering whether a city is building enough to keep up with demand.
 
 **Why NewYorkers Will all Benefit:**
+
 New York is known as "the city that never sleeps" however, anyone who lives there will tell you that this saying hardly hold true today. Most shops, restaurants and cafes are closed by 9 or 10pm even on weekends. What caused this? For most of its history, New York was an industrial city. Factory workers kept long, irregular hours and the businesses around them stayed open late to match their schedules. After that era ended, the city became a hub for artists, who also tended to live and work on nontraditional hours, keeping New York’s late night culture alive.
+
 Today, Manhattan has undergone a wave of corporate consolidation. Large companies have bought up much of the real estate, and as prices rose, artists and other creative workers were pushed to the outer boroughs while corporate employees with more conventional schedules replaced them. Neighborhoods in Brooklyn and Queens still hold onto pieces of the old nightlife energy, but in Manhattan it has mostly faded.
+  
 Making housing more affordable in Manhattan by building more homes would help reverse this shift. If younger people and artists could actually afford to live there again, the city could begin to regain some of the vibrancy that once defined it. This would not only improve the quality of life for Gen Z and Millennials, but it would also boost the broader city economy. The nightlife sector alone contributes about 35 billion dollars to New York City’s economy, and restoring that culture would help strengthen the city as a whole (Mayor’s Office of Media and Entertainment, 2019). 
 
 
 Together, these measures reward cities that both build more housing and reduce rent pressure. 
 
 **Citations**
+
 Mayor’s Office of Media and Entertainment. (2019). NYC Nightlife Economic Impact Report. Retrieved from https://www.nyc.gov/assets/mome/pdf/NYC_Nightlife_Economic_Impact_Report_2019_digital.pdf
 
 New York City Independent Budget Office. (2019). Where Do NYC’s Teachers and Principals Live Compared With Where They Work? Retrieved from https://www.ibo.nyc.ny.us/iboreports/printnycbtn19.pdf
