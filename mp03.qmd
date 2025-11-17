@@ -1,0 +1,543 @@
+
+---
+title: "Mini Project 03"
+author: Maham Hassan
+date: October 30, 2025
+format:
+  html:
+    code-fold: true
+    toc: true
+---
+## Introduction
+
+New York City's street trees play a crucial role in shaping the city's environment and public spaces, but they also face challenges ranging from invasive species to uneven maintenance across neighborhoods. In this project, we will analyze the NYC TreeMap data, which catalogs tree species, health, and location across all council districts, to uncover patterns and inequities in the urban canopy.
+
+By combining spatial data with tree condition indicators, we will explore the data. The final part of this project proposes a targeted tree initiative that addresses two invasive species problems.
+
+
+
+The following maps show NYC districts and tree coverage wihin. 
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(sf)
+library(dplyr)
+
+get_nyc_council_districts <- function() {
+  dir.create("data/mp03", showWarnings = FALSE, recursive = TRUE)
+  
+  url <- "https://s-media.nyc.gov/agencies/dcp/assets/files/zip/data-tools/bytes/city-council/nycc_25c.zip"
+  zip_path <- "data/mp03/nycc_25c.zip"
+  unzip_dir <- "data/mp03/nycc_25c"
+  
+  if (!file.exists(zip_path)) {
+    download.file(url, destfile = zip_path, mode = "wb", method = "libcurl")
+  }
+  
+  if (!dir.exists(unzip_dir)) {
+    unzip(zip_path, exdir = unzip_dir)
+  }
+  
+  shp_file <- list.files(unzip_dir, pattern = "\\.shp$", full.names = TRUE, recursive = TRUE)
+  if (length(shp_file) == 0) stop("No .shp file found after unzipping.")
+  
+  nycc <- sf::st_read(shp_file[1], quiet = TRUE)
+  nycc_wgs84 <- sf::st_transform(nycc, crs = "WGS84")
+  return(nycc_wgs84)
+}
+
+# Call the function and simplify geometry
+nycc_districts <- get_nyc_council_districts()
+nycc_districts_simplified <- nycc_districts |>
+  mutate(geometry = st_simplify(geometry, dTolerance = 30))
+
+# Optional: quick check
+plot(nycc_districts_simplified["CounDist"], main = "Simplified NYC Council Districts")
+
+```
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(httr2)
+library(sf)
+library(dplyr)
+library(glue)
+
+get_nyc_tree_points <- function(limit = 50000) {
+  out_dir <- "data/mp03/trees"
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+  base_url <- "https://data.cityofnewyork.us/resource/hn5i-inap.geojson"
+  chunk <- 1
+  done <- FALSE
+
+  while (!done) {
+    file_path <- file.path(out_dir, glue("trees_{limit}_{chunk}.geojson"))
+    offset <- (chunk - 1) * limit
+
+    # Only download if file doesn't already exist
+    if (!file.exists(file_path)) {
+      message(glue("Downloading chunk {chunk} (offset = {offset})..."))
+      resp <- request(base_url) |>
+        req_url_query(`$limit` = limit, `$offset` = offset) |>
+        req_perform()
+
+      # Save raw GeoJSON to disk
+      writeBin(resp_body_raw(resp), file_path)
+    } else {
+      message(glue("Chunk {chunk} already exists. Skipping download."))
+    }
+
+    # Check if this is the last chunk
+    tree_data <- st_read(file_path, quiet = TRUE)
+    n <- nrow(tree_data)
+    message(glue("Chunk {chunk} has {n} rows."))
+
+    if (n < limit) {
+      done <- TRUE
+      message("All tree point data downloaded ")
+    } else {
+      chunk <- chunk + 1
+    }
+  }
+
+  # Combine all saved chunks into one sf object
+  all_files <- list.files(out_dir, pattern = "\\.geojson$", full.names = TRUE)
+  all_data <- all_files |>
+    lapply(st_read, quiet = TRUE) |>
+    bind_rows()
+
+  message("NYC Tree Points successfully combined ")
+  return(all_data)
+}
+
+# combined tree data:
+nyc_trees <- get_nyc_tree_points(limit = 50000)
+
+# Save to disk so it doesn't need to be recombined next time
+saveRDS(nyc_trees, "data/mp03/nyc_tree_points_combined.rds")
+
+```
+```{r}
+library(ggplot2)
+library(sf)
+
+ggplot() +
+  # Plot ALL tree points first (as a background layer)
+  geom_sf(data = nyc_trees, color = "darkgreen", size = 0.05, alpha = 0.4) +
+  
+  # Plot district boundaries on top
+  geom_sf(data = nycc_districts_simplified, fill = NA, color = "black", linewidth = 0.3) +
+  
+  labs(
+    title = "NYC Tree Points with Council District Boundaries Overlay",
+    subtitle = "Districts drawn on top of tree data for clarity",
+    caption = "Data sources: NYC Open Data (Trees), NYC DCP (Districts)"
+  ) +
+  theme_minimal()
+
+```
+```{r}
+# make sure that both are sf objects and in the same CRS
+st_crs(nyc_trees) == st_crs(nycc_districts_simplified)
+
+# Join tree points to the district they fall in
+trees_with_districts <- st_join(
+  nyc_trees,
+  nycc_districts_simplified[, c("CounDist")], # Keep only district ID
+  join = st_intersects       
+)
+
+```
+
+## Data Exploration
+
+1. Which council district has the most trees?
+
+District 51, in Staten Island, has the greatest number of trees. 
+
+```{r}
+library(dplyr)
+library(DT)
+library(scales)
+library(htmltools)
+
+# Count trees per district
+tree_counts <- trees_with_districts |>
+  st_drop_geometry() |>
+  group_by(CounDist) |>
+  summarise(Tree_Count = n()) |>
+  arrange(desc(Tree_Count))
+
+# Format numbers and column names
+tree_counts_formatted <- tree_counts |>
+  mutate(Tree_Count = comma(Tree_Count)) |>
+  rename(`Council District` = CounDist, `Tree Count` = Tree_Count)
+
+# Interactive table: Top 5
+datatable(
+  tree_counts_formatted |> head(5),
+  rownames = FALSE,
+  caption = htmltools::tags$caption(
+    style = "caption-side: top; text-align: center; font-weight: bold; color: #333; font-size: 16px;",
+    "Top 5 NYC Council Districts by Tree Count"
+  ),
+  options = list(
+    pageLength = 5,
+    autoWidth = TRUE,
+    columnDefs = list(
+      list(className = 'dt-left', targets = "_all")
+    ),
+    dom = 't',
+    scrollX = FALSE,
+    compact = TRUE
+  ),
+  class = 'compact stripe hover row-border order-column',
+  style = "bootstrap"
+)
+#
+#
+#
+#
+#
+```
+
+2. Which council district has the highest density of trees? 
+
+District 7 in Manhattan has the highest tree density. 
+
+
+```{r}
+# Extract district area
+district_areas <- nycc_districts_simplified |>
+  st_drop_geometry() |>
+  select(CounDist, Shape_Area)
+
+# Compute density (trees per sq km)
+density_data <- tree_counts |>
+  inner_join(district_areas, by = "CounDist") |>
+  mutate(Tree_Density_per_SqKm = Tree_Count / (Shape_Area / 1e6)) |>
+  arrange(desc(Tree_Density_per_SqKm))
+
+# Format numbers and column names
+density_data_formatted <- density_data |>
+  mutate(
+    Tree_Count = comma(Tree_Count),
+    Tree_Density_per_SqKm = comma(round(Tree_Density_per_SqKm, 1))
+  ) |>
+  rename(
+    `Council District` = CounDist,
+    `Tree Count` = Tree_Count,
+    `Tree Density per SqKm` = Tree_Density_per_SqKm
+  )
+
+# Interactive table: Top 5
+datatable(
+  density_data_formatted |> head(5),
+  rownames = FALSE,
+  caption = htmltools::tags$caption(
+    style = "caption-side: top; text-align: center; font-weight: bold; color: #333; font-size: 16px;",
+    "Top 5 NYC Council Districts by Tree Density (trees per sq km)"
+  ),
+  options = list(
+    pageLength = 5,
+    autoWidth = TRUE,
+    columnDefs = list(
+      list(className = 'dt-left', targets = "_all")
+    ),
+    dom = 't',
+    scrollX = FALSE,
+    compact = TRUE
+  ),
+  class = 'compact stripe hover row-border order-column',
+  style = "bootstrap"
+)
+#
+#
+#
+#
+#
+```
+
+3.  Which district has highest fraction of dead trees out of all trees?
+
+District 32 has the highest fraction of dead trees. 
+
+```{r}
+# Count dead trees per district
+dead_tree_counts <- trees_with_districts |>
+  st_drop_geometry() |>
+  filter(tpcondition == "Dead") |>
+  group_by(CounDist) |>
+  summarise(Dead_Trees = n())
+
+# Compute fraction of dead trees
+dead_fraction <- tree_counts |>
+  inner_join(dead_tree_counts, by = "CounDist") |>
+  mutate(Fraction_Dead = Dead_Trees / Tree_Count) |>
+  arrange(desc(Fraction_Dead))
+
+# Format numbers and column names
+dead_fraction_formatted <- dead_fraction |>
+  mutate(
+    Tree_Count = comma(Tree_Count),
+    Dead_Trees = comma(Dead_Trees),
+    Fraction_Dead = percent(Fraction_Dead, accuracy = 0.1)
+  ) |>
+  rename(
+    `Council District` = CounDist,
+    `Total Trees` = Tree_Count,
+    `Dead Trees` = Dead_Trees,
+    `Percent Dead` = Fraction_Dead
+  )
+
+# Interactive table: Top 5
+datatable(
+  dead_fraction_formatted |> head(5),
+  rownames = FALSE,
+  caption = htmltools::tags$caption(
+    style = "caption-side: top; text-align: center; font-weight: bold; color: #333; font-size: 16px;",
+    "Top 5 NYC Council Districts by Percent of Dead Trees"
+  ),
+  options = list(
+    pageLength = 5,
+    autoWidth = TRUE,
+    columnDefs = list(
+      list(className = 'dt-left', targets = "_all")
+    ),
+    dom = 't',
+    scrollX = FALSE,
+    compact = TRUE
+  ),
+  class = 'compact stripe hover row-border order-column',
+  style = "bootstrap"
+)
+#
+#
+#
+#
+#
+#
+
+```
+
+4.  What is the most common tree species in Manhattan?
+
+The Gleditsia triacanthos var. inermis - Thornless honeylocust is the most common tree species in Manhattan
+
+```{r}
+library(dplyr)
+library(DT)
+library(scales)
+library(htmltools)
+
+# Add borough column based on council district
+trees_with_borough <- trees_with_districts |>
+  mutate(
+    Borough = case_when(
+      CounDist >= 1 & CounDist <= 10 ~ "Manhattan",
+      CounDist >= 11 & CounDist <= 18 ~ "Bronx",
+      CounDist >= 19 & CounDist <= 32 ~ "Queens",
+      CounDist >= 33 & CounDist <= 48 ~ "Brooklyn",
+      CounDist >= 49 & CounDist <= 51 ~ "Staten Island",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Filter for Manhattan and count tree species
+manhattan_species <- trees_with_borough |>
+  filter(Borough == "Manhattan") |>
+  st_drop_geometry() |>
+  group_by(genusspecies) |>
+  summarise(Count = n()) |>
+  arrange(desc(Count))
+
+# Format results and pick top 5
+manhattan_species_formatted <- manhattan_species |>
+  mutate(Count = comma(Count)) |>
+  rename(`Tree Species` = genusspecies)
+
+# Interactive table of top 5 species
+datatable(
+  manhattan_species_formatted |> head(5),
+  rownames = FALSE,
+  caption = htmltools::tags$caption(
+    style = "caption-side: top; text-align: center; font-weight: bold; color: #333; font-size: 16px;",
+    "Top 5 Tree Species in Manhattan"
+  ),
+  options = list(
+    pageLength = 5,
+    autoWidth = TRUE,
+    columnDefs = list(list(className = 'dt-left', targets = "_all")),
+    dom = 't'
+  )
+)
+#
+#
+#
+#
+#
+```
+5. What is the species of the tree closest to Baruch’s campus?
+
+The closest tree to Baruch is a Liquidambar styraciflua, a sweetgum tree. It is 19.48 meters away from Baruch. 
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+
+
+library(sf)
+library(dplyr)
+library(units)
+
+# Function to create a spatial point
+new_st_point <- function(lat, lon) {
+  st_sfc(
+    st_point(c(lon, lat)),
+    crs = 4326  # WGS84 for input
+  )
+}
+
+# Create Baruch's location as a spatial point in WGS84
+baruch_point <- new_st_point(40.7403, -73.9833)
+
+# Transform both trees and the point to meters
+trees_transformed <- st_transform(trees_with_districts, 2263)
+baruch_projected <- st_transform(baruch_point, 2263)
+
+# Compute distance to Baruch and find the closest tree
+closest_tree <- trees_transformed |>
+  mutate(distance = st_distance(geometry, baruch_projected)) |>
+  slice_min(distance, n = 1) |>
+  st_drop_geometry()
+
+closest_tree_species <- closest_tree$genusspecies
+closest_tree_distance <- set_units(closest_tree$distance, "meters")
+
+# Output
+cat("The closest tree to Baruch is a:", closest_tree_species, "\n")
+cat("Distance:", round(closest_tree_distance, 2), "\n")
+
+```
+
+## Native Resistance: A Spotted Lanternfly Reduction Plan
+
+Within the past 4 years, The Spotted Lanternfly  has rapidly taken over New York City in the summer months. The Lanternfly is a pesky invasive species that devastates important crops such as grapes, apples and hardwoods. In addition to the economic damage, there are ecological threats. 
+
+### Proposed Initiative
+
+We aim to reduce Spotted Lanternfly habitat and promote planting native species while doing so. The Lanternfly's preferred host tree is the Ailanthus Altissima (tree of heaven). This tree itself also happens to be an invasive species that threatens the native habitat. 
+
+A study done by Penn State has found that the Lanternfly rarely feeds on Oaks and Conifers. Our project thus aims to reduce lanternfly habitat by 
+
+1. Removing Ailanthus Altissima and 
+2. Replanting resilient native species such as            - White Oak (Quercus Alba)
+   - Swamp White Oak (Quercus Bicolor)
+   - Eastern Red Cedar ( Juniperus Virginiana)
+   - Eastern White Pine (Pinus Strobus)      
+  
+#### Methodology
+
+First, we must determine which District has the highest population of the tree of heaven to determine the best candidate for our pilot program. Comparing the top 5 districts with high populations of the tree of heaven, we find that district 50 has the highest population with 363 trees. 
+
+
+```{r}
+library(dplyr)
+library(stringr)
+library(DT)
+library(scales)
+
+# Filter for Tree of Heaven species
+tree_of_heaven <- trees_with_districts |>
+  st_drop_geometry() |>
+  filter(str_detect(genusspecies, regex("Ailanthus altissima|tree of heaven", ignore_case = TRUE)))
+
+# Count by district
+tree_of_heaven_counts <- tree_of_heaven |>
+  group_by(CounDist) |>
+  summarise(TreeOfHeaven_Count = n()) |>
+  arrange(desc(TreeOfHeaven_Count))
+
+# Format and rename columns
+tree_of_heaven_formatted <- tree_of_heaven_counts |>
+  mutate(TreeOfHeaven_Count = comma(TreeOfHeaven_Count)) |>
+  rename(
+    `Council District` = CounDist,
+    `Tree of Heaven Count` = TreeOfHeaven_Count
+  )
+
+# Interactive table: Top 5 with styling updates
+datatable(
+  tree_of_heaven_formatted |> head(5),
+  rownames = FALSE,
+  caption = htmltools::tags$caption(
+    style = "caption-side: top; text-align: center; font-weight: bold; color: #333;",
+    "Top 5 NYC Council Districts by Tree of Heaven Count"
+  ),
+  options = list(
+    dom = 't',                
+    pageLength = 5,          
+    ordering = FALSE,         
+    columnDefs = list(
+      list(className = 'dt-left', targets = "_all")  # Left-align columns
+    )
+  ),
+  class = 'cell-border stripe'  
+)
+
+#
+#
+```
+
+The Following graphic shows the locations of all Ailanthus Altissima in District 50. 
+
+```{r}
+library(sf)
+library(ggplot2)
+library(dplyr)
+
+# Filter District 50
+district_50 <- nycc_districts_simplified |>
+  filter(CounDist == 50) |>
+  st_transform(4326)
+
+# Filter Trees of Heaven only and transform CRS
+trees_of_heaven_dist50 <- trees_with_districts |>
+  filter(
+    CounDist == 50,
+    grepl("Ailanthus altissima|tree of heaven", genusspecies, ignore.case = TRUE)
+  ) |>
+  st_transform(4326)
+
+# Check if any Tree of Heaven found
+if (nrow(trees_of_heaven_dist50) == 0) {
+  message("No Tree of Heaven found in District 50.")
+} else {
+  # Plot map
+  ggplot() +
+    geom_sf(data = district_50, fill = "white", color = "black") +
+    geom_sf(data = trees_of_heaven_dist50, color = "red", size = 1, alpha = 0.6) +
+    labs(
+      title = "Tree of Heaven Locations in NYC Council District 50",
+      subtitle = "District boundary shown, Tree of Heaven marked as red dots"
+    ) +
+    theme_minimal()
+}
+
+```
+There area 363 Ailanthus altissima trees in district 50. Our pilot program will remove all of these trees and replace then with the four native species in consultation with NYC Parks and their ecological expertise. We will closely monitor lantern fly populations in the distrcit before and after the pilot program.
+
+#### Predicted Impact
+
+The initiative, if successful, will 
+
+-  Restore native habitats 
+-  Increase native New York plant life
+-  Reduce invasive plant populations 
+-  Reduce invasive insect populations
+
+This pilot program could make a huge difference in the NYC ecological landscape. It is imperative that we mitigate invasive species as soon as possible. The longer that these species are allowed to thrive, the longer they wreak havok and cause irreperable damage. 
+
+
+
+
+
+
+
+
