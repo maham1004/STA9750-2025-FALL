@@ -1,0 +1,518 @@
+---
+title: "STA 9750 — Mini-Project 04"
+author: "Maham Hassan"
+date: "December 1, 2025"
+format:
+  html:
+    theme: morph
+    code-fold: true
+    toc: true
+editor: source
+---
+# Task 1 CES Non Farm Payroll Employment (1979–2025)
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(dplyr)
+library(purrr)
+library(stringr)
+library(readr)
+library(rvest)
+library(httr2)
+library(lubridate)
+library(DT)
+
+
+# Task 1 — CES Total Nonfarm Payroll Employment
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(httr2)
+library(rvest)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(DT)
+
+# Build the base request to the BLS Data Finder endpoint
+req <- request("https://data.bls.gov") |>
+  req_url_path_append("pdq") |>
+  req_url_path_append("SurveyOutputServlet") |>
+  req_method("POST") |>
+  req_body_form(
+    request_action    = "get_data",
+    reformat          = "true",
+    from_results_page = "true",
+    from_year         = "1979",
+    to_year           = "2025",
+    initial_request   = "false",
+    data_tool         = "surveymost",
+    series_id         = "CES0000000001"
+  ) |>
+  # increase the time allowed for the request (for example 60 seconds)
+  req_timeout(60)
+
+# Perform the request
+resp <- req_perform(req)
+
+# Turn the response body into an HTML document
+ces_page <- resp |>
+  resp_body_string() |>
+  read_html()
+
+# Extract all tables
+ces_tables <- ces_page |>
+  html_elements("table")
+
+# The second table holds the time series
+ces_tbl_raw <- ces_tables[[2]] |>
+  html_table()
+
+# Reshape wide (year with Jan–Dec columns) to long (one row per month)
+ces_long <- ces_tbl_raw |>
+  tidyr::pivot_longer(
+    cols = Jan:Dec,
+    names_to  = "month",
+    values_to = "level"
+  )
+
+# Clean types and build a proper date column
+ces_clean <- ces_long |>
+  mutate(
+    date  = ym(paste(Year, month)),      # "1979 Jan" -> 1979-01-01
+    level = as.numeric(level)
+  ) |>
+  select(date, level) |>
+  filter(!is.na(date), !is.na(level)) |>
+  filter(date >= as.Date("1979-01-01"),
+         date <= as.Date("2025-06-01")) |>
+  arrange(date)
+
+ces_final <- ces_clean
+
+# Create a clean interactive table with a centered title
+datatable(
+  ces_final,
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    autoWidth  = TRUE,
+    dom        = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(ces_final),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      "CES Total Nonfarm Payroll Employment (Final Estimates, 1979–2025)",
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
+  )
+
+library(DT)
+
+# Ensure the CES data is sorted correctly
+ces_display <- ces_final |>
+  arrange(date)
+
+# Create a clean interactive table with a centered bold title
+datatable(
+  ces_display,
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    autoWidth = TRUE,
+    dom = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(ces_display),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      "CES Total Nonfarm Payroll Employment (Final Estimates, 1979–2025)",
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
+  )
+```
+
+```{r}
+# Create a clean interactive table with a centered bold title
+datatable(
+  ces_display,
+  rownames = FALSE,
+  options = list(
+    pageLength = 12,
+    autoWidth = TRUE,
+    dom = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(ces_display),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      "CES Total Nonfarm Payroll Employment (Final Estimates, 1979–2025)",
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
+  )
+```
+
+---
+
+# Task 2  CES Annual Revision Tables (1979–2025)
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(httr2)
+library(rvest)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(purrr)
+library(tibble)
+
+# Request the CES revisions page from BLS with a longer timeout
+rev_req <- request("https://www.bls.gov") |>
+  req_url_path("web", "empsit", "cesnaicsrev.htm") |>
+  req_headers(
+    `User-Agent` = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0"
+  ) |>
+  req_timeout(60)   # allow up to 60 seconds for this request
+
+rev_resp <- rev_req |>
+  req_perform()
+
+rev_page <- rev_resp |>
+  resp_body_html()
+
+# Function to extract CES revisions for a single year
+get_ces_revisions_year <- function(yr, page = rev_page) {
+  # locate the table for this year using its id
+  year_node <- page |>
+    html_element(paste0("#", yr))
+  
+  # if year not found, return an empty tibble with the right columns
+  if (is.null(year_node)) {
+    return(tibble(
+      date     = as.Date(character()),
+      original = integer(),
+      final    = integer(),
+      revision = integer()
+    ))
+  }
+  
+  # read the table body, no header
+  year_tbl <- year_node |>
+    html_element("tbody") |>
+    html_table(header = FALSE)
+  
+  year_tbl |>
+    as_tibble() |>
+    # first 12 rows are Jan–Dec
+    slice(1:12) |>
+    transmute(
+      month    = X1,
+      year     = as.integer(X2),
+      original = as.integer(X3),
+      final    = as.integer(X5),
+      month_clean = stringr::str_replace(month, "\\.", ""),
+      date        = lubridate::ym(paste(year, month_clean)),
+      revision    = final - original
+    ) |>
+    select(date, original, final, revision) |>
+    filter(!is.na(date))
+}
+
+# Build full revisions data set for 1979–2025
+years_full <- 1979:2025
+
+ces_revisions_raw <- years_full |>
+  map(get_ces_revisions_year) |>
+  list_rbind() |>
+  arrange(date)
+
+ces_revisions <- ces_revisions_raw |>
+  filter(date >= as.Date("1979-01-01"),
+         date <= as.Date("2025-06-01")) |>
+  arrange(date)
+
+# quick check
+head(ces_revisions)
+tail(ces_revisions)
+
+```
+
+```{r}
+datatable(
+  ces_revisions,
+  rownames = FALSE,
+  options = list(
+    pageLength = 12,
+    autoWidth = TRUE,
+    dom = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(ces_revisions),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      "CES Nonfarm Payroll Revisions (Original vs Final, 1979–2025)",
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
+  )
+
+
+```
+# Task 3 Joined table
+```{r}
+library(dplyr)
+library(lubridate)
+library(DT)
+
+# Build joined CES table for Task 3
+ces_full <- ces_final |>
+  inner_join(ces_revisions, by = "date") |>
+  mutate(
+    year  = year(date),
+    month = month(date, label = TRUE, abbr = TRUE),
+    decade = (year %/% 10) * 10,
+    absolute_revision = abs(revision),
+    revision_pct = revision / final,
+    absolute_revision_pct = abs(revision) / final
+  ) |>
+  arrange(date)
+
+# Prepare display table with cleaned column names and rounding
+ces_full_display <- ces_full |>
+  arrange(date) |>
+  mutate(
+    Level               = round(level, 3),
+    Original            = round(original, 3),
+    Final               = round(final, 3),
+    Revision            = round(revision, 3),
+    AbsoluteRevision    = round(absolute_revision, 3),
+    AbsoluteRevisionPct = round(absolute_revision_pct, 3)
+  ) |>
+  select(
+    Date                 = date,
+    Level,
+    Original,
+    Final,
+    Revision,
+    AbsoluteRevision,
+    AbsoluteRevisionPct
+  )
+
+# Interactive table
+datatable(
+  ces_full_display,
+  rownames = FALSE,
+  options = list(
+    pageLength = 10,
+    autoWidth  = TRUE,
+    dom        = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(ces_full_display),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      "CES Levels and Revisions (Joined Table, 1979–2025)",
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
+  )
+
+
+```
+
+6 Statistics
+
+```{r}
+# stat 1: largest positive revision
+largest_positive_revision <- ces_full |>
+  slice_max(revision, n = 1)
+
+largest_positive_revision
+
+# Stat 2: largest negative revision
+largest_negative_revision <- ces_full |>
+  slice_min(revision, n = 1)
+
+largest_negative_revision
+
+
+# stat 3:Average revision over the whole sample
+avg_revision <- ces_full |>
+  summarise(
+    mean_revision = mean(revision, na.rm = TRUE)
+  )
+
+avg_revision
+
+# stat 4: Average absolute revision
+
+avg_absolute_revision <- ces_full |>
+  summarise(
+    mean_abs_revision = mean(absolute_revision, na.rm = TRUE)
+  )
+
+avg_absolute_revision
+
+#stat 5: Average absolute revision as a percentage of the final employment level
+
+avg_absolute_revision_pct <- ces_full |>
+  summarise(
+    mean_abs_revision_pct = mean(absolute_revision_pct, na.rm = TRUE)
+  )
+
+#stat 6: Overall fraction of positive revisions
+avg_absolute_revision_pct
+
+fraction_positive_overall <- ces_full |>
+  summarise(
+    fraction_positive = mean(revision > 0, na.rm = TRUE)
+  )
+
+
+
+```
+ 4 visualizations
+```{r}
+
+library(ggplot2)
+library(scales)
+
+# Plot 1: CES employment level over time
+ggplot(ces_full, aes(x = date, y = level)) +
+  geom_line() +  
+  labs(
+    title = "CES Total Nonfarm Payroll Employment Level (1979–2025)",
+    x = "Year",
+    y = "Employment Level"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text()
+  )
+
+library(ggplot2)
+library(scales)
+
+# Plot 2: CES revisions over time by magnitutde
+ggplot(ces_full, aes(x = date, y = revision)) +
+  # draw a line showing revision each month
+  geom_line() +
+  # add a horizontal line at zero for reference
+  geom_hline(yintercept = 0, linewidth = 0.4) +
+  labs(
+    title = "CES Revisions Over Time (Final minus Original, 1979–2025)",
+    x = "Year",
+    y = "Revision in Employment Level"
+  ) +
+  # format y axis with commas instead of scientific notation
+  scale_y_continuous(labels = comma) +
+  # use a clean, simple theme
+  theme_minimal(base_size = 12) +
+  # make titles easier to read
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text()
+  )
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+
+#plot 3: average positive and negative CES revisions over time (absolute value)
+
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+# Step 1: create dataset summarizing positive and negative revisions by year
+rev_pos_neg_year <- ces_full |>
+  mutate(
+    # label revision type based on sign
+    rev_type = if_else(revision >= 0, "Positive Revision", "Negative Revision"),
+    
+    # absolute magnitude of revision so we can compare sizes
+    abs_rev = abs(revision)
+  ) |>
+  group_by(year, rev_type) |>
+  summarise(
+    avg_abs_revision = mean(abs_rev, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Step 2: grouped bar chart with trend lines
+ggplot(rev_pos_neg_year, aes(x = year, y = avg_abs_revision, fill = rev_type)) +
+  
+  # bar chart side by side for each year
+  geom_col(position = "dodge") +
+  
+  # trend lines for each revision type
+  geom_smooth(
+    aes(color = rev_type),
+    method = "loess",
+    se = FALSE,
+    linewidth = 1.2
+  ) +
+  
+  labs(
+    title = "Average Positive and Negative CES Revisions by Year",
+    x = "Year",
+    y = "Average Absolute Revision",
+    fill = "Revision Type",
+    color = "Trend"
+  ) +
+  
+  scale_y_continuous(labels = comma) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 90, vjust = 0.5)
+  )
+
+library(ggplot2)
+library(scales)
+
+
+
+
+
+# Plot 4: Absolute revision percentage over time
+ggplot(ces_full, aes(x = date, y = absolute_revision_pct)) +
+  
+  # draw a line showing how relative revision size changes over time
+  geom_line() +
+  
+  labs(
+    title = "Absolute CES Revision as a Percentage of Final Employment Over Time",
+    x = "Year",
+    y = "Absolute Revision as Percent of Final Employment"
+  ) +
+  
+  # format y axis as percentages, such as 0.25% instead of 0.0025
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text()
+  )
+
+
+
+```
