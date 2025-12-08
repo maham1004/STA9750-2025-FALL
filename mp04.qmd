@@ -9,7 +9,14 @@ format:
     toc: true
 editor: source
 ---
-# Task 1 CES Non Farm Payroll Employment (1979–2025)
+# Introduction
+
+Every month, the Bureau of Labor Statistics releases the jobs report: one number that can move the stock market, shift interest rate expectations, and shape the political conversation overnight. Because so much rides on it, the accuracy of the jobs number matters. When President Trump fired BLS Commissioner Erika McEntarfer in 2025, arguing that the agency had produced “inflated” job figures, the decision immediately set off a national debate.
+
+This project takes a step back from the politics and looks directly at the data behind that debate. Using employment levels and revision tables from 1979 to 2025, we examine how often the initial jobs numbers are revised, how large those revisions tend to be, and whether any patterns line up with the political claims being made. We summarize long-run trends, build visualizations, and run statistical tests to see what the evidence actually shows. 
+
+
+# CES Non Farm Payroll Employment (1979–2025)
 ```{r, results='hide', message=FALSE, warning=FALSE}
 library(dplyr)
 library(purrr)
@@ -46,7 +53,7 @@ req <- request("https://data.bls.gov") |>
     data_tool         = "surveymost",
     series_id         = "CES0000000001"
   ) |>
-  # increase the time allowed for the request (for example 60 seconds)
+  # increase the time allowed for the request 
   req_timeout(60)
 
 # Perform the request
@@ -65,7 +72,7 @@ ces_tables <- ces_page |>
 ces_tbl_raw <- ces_tables[[2]] |>
   html_table()
 
-# Reshape wide (year with Jan–Dec columns) to long (one row per month)
+# Reshape wide to long 
 ces_long <- ces_tbl_raw |>
   tidyr::pivot_longer(
     cols = Jan:Dec,
@@ -76,7 +83,7 @@ ces_long <- ces_tbl_raw |>
 # Clean types and build a proper date column
 ces_clean <- ces_long |>
   mutate(
-    date  = ym(paste(Year, month)),      # "1979 Jan" -> 1979-01-01
+    date  = ym(paste(Year, month)),      
     level = as.numeric(level)
   ) |>
   select(date, level) |>
@@ -87,7 +94,7 @@ ces_clean <- ces_long |>
 
 ces_final <- ces_clean
 
-# Create a clean interactive table with a centered title
+#  interactive table 
 datatable(
   ces_final,
   rownames = FALSE,
@@ -115,7 +122,7 @@ library(DT)
 ces_display <- ces_final |>
   arrange(date)
 
-# Create a clean interactive table with a centered bold title
+# interactive table
 datatable(
   ces_display,
   rownames = FALSE,
@@ -139,7 +146,7 @@ datatable(
 ```
 
 ```{r}
-# Create a clean interactive table with a centered bold title
+
 datatable(
   ces_display,
   rownames = FALSE,
@@ -164,7 +171,7 @@ datatable(
 
 ---
 
-# Task 2  CES Annual Revision Tables (1979–2025)
+# CES Annual Revision Tables (1979–2025)
 ```{r, results='hide', message=FALSE, warning=FALSE}
 library(httr2)
 library(rvest)
@@ -269,7 +276,7 @@ datatable(
 
 
 ```
-# Task 3 Joined table
+# Joined table
 ```{r}
 library(dplyr)
 library(lubridate)
@@ -288,7 +295,7 @@ ces_full <- ces_final |>
   ) |>
   arrange(date)
 
-# Prepare display table with cleaned column names and rounding
+# Prepare display table 
 ces_full_display <- ces_full |>
   arrange(date) |>
   mutate(
@@ -334,55 +341,208 @@ datatable(
 
 ```
 
-6 Statistics
+# Data Exploration
 
-```{r}
-# stat 1: largest positive revision
-largest_positive_revision <- ces_full |>
-  slice_max(revision, n = 1)
+```{r, echo=FALSE, results="asis"}
 
-largest_positive_revision
+
+library(dplyr)
+library(lubridate)
+library(DT)
+library(scales)
+
+# Clean joined CES table for analysis
+ces_full_clean <- ces_full |>
+  filter(level > 0) |>
+  mutate(
+    absolute_revision = abs(revision),
+    revision_pct = revision / level,
+    absolute_revision_pct = abs(revision) / level
+  )
+
+start_year <- year(min(ces_full_clean$date, na.rm = TRUE))
+end_year   <- year(max(ces_full_clean$date, na.rm = TRUE))
+
+# Stat 1: largest positive revision
+largest_positive_revision <- ces_full_clean |>
+  slice_max(revision, n = 5)
+
+largest_positive_display <- largest_positive_revision |>
+  mutate(
+    Level = round(level, 3),
+    Original = round(original, 3),
+    Final = round(final, 3),
+    Revision = round(revision, 3),
+    AbsoluteRevision = round(absolute_revision, 3),
+    AbsoluteRevisionPct = round(absolute_revision_pct, 5)
+  ) |>
+  select(
+    Date = date,
+    Level,
+    Original,
+    Final,
+    Revision,
+    AbsoluteRevision,
+    AbsoluteRevisionPct
+  )
+
+datatable(
+  largest_positive_display,
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    autoWidth = TRUE,
+    dom = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(largest_positive_display),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      sprintf("Stat 1: Largest Positive CES Revision (%d–%d)", start_year, end_year),
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
+  )
 
 # Stat 2: largest negative revision
-largest_negative_revision <- ces_full |>
-  slice_min(revision, n = 1)
+largest_negative_revision <- ces_full_clean |>
+  slice_min(revision, n = 5)
 
-largest_negative_revision
-
-
-# stat 3:Average revision over the whole sample
-avg_revision <- ces_full |>
-  summarise(
-    mean_revision = mean(revision, na.rm = TRUE)
+largest_negative_display <- largest_negative_revision |>
+  mutate(
+    Level = round(level, 3),
+    Original = round(original, 3),
+    Final = round(final, 3),
+    Revision = round(revision, 3),
+    AbsoluteRevision = round(absolute_revision, 3),
+    AbsoluteRevisionPct = round(absolute_revision_pct, 5)
+  ) |>
+  select(
+    Date = date,
+    Level,
+    Original,
+    Final,
+    Revision,
+    AbsoluteRevision,
+    AbsoluteRevisionPct
   )
 
-avg_revision
-
-# stat 4: Average absolute revision
-
-avg_absolute_revision <- ces_full |>
-  summarise(
-    mean_abs_revision = mean(absolute_revision, na.rm = TRUE)
+datatable(
+  largest_negative_display,
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    autoWidth = TRUE,
+    dom = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(largest_negative_display),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      sprintf("Stat 2: Largest Negative CES Revision (%d–%d)", start_year, end_year),
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
   )
 
-avg_absolute_revision
+# Stats 3–6: summary statistics in one table
+avg_revision <- ces_full_clean |>
+  summarise(mean_revision = mean(revision, na.rm = TRUE)) |>
+  pull(mean_revision)
 
-#stat 5: Average absolute revision as a percentage of the final employment level
+avg_absolute_revision <- ces_full_clean |>
+  summarise(mean_abs_revision = mean(absolute_revision, na.rm = TRUE)) |>
+  pull(mean_abs_revision)
 
-avg_absolute_revision_pct <- ces_full |>
-  summarise(
-    mean_abs_revision_pct = mean(absolute_revision_pct, na.rm = TRUE)
+avg_absolute_revision_pct <- ces_full_clean |>
+  summarise(mean_abs_revision_pct = mean(absolute_revision_pct, na.rm = TRUE)) |>
+  pull(mean_abs_revision_pct)
+
+fraction_positive_overall <- ces_full_clean |>
+  summarise(fraction_positive = mean(revision > 0, na.rm = TRUE)) |>
+  pull(fraction_positive)
+
+stats_3_6_table <- tibble(
+  Statistic = c(
+    "Average revision (thousand jobs)",
+    "Average absolute revision (thousand jobs)",
+    "Average absolute revision as percent of employment",
+    "Fraction of months with positive revisions"
+  ),
+  Value = c(
+    round(avg_revision, 3),
+    round(avg_absolute_revision, 3),
+    percent(avg_absolute_revision_pct, accuracy = 0.01),
+    percent(fraction_positive_overall, accuracy = 0.1)
+  )
+)
+
+datatable(
+  stats_3_6_table,
+  rownames = FALSE,
+  options = list(
+    pageLength = 4,
+    autoWidth = TRUE,
+    dom = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(stats_3_6_table),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      sprintf("Stats 3–6: Overall CES Revision Summary (%d–%d)", start_year, end_year),
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
   )
 
-#stat 6: Overall fraction of positive revisions
-avg_absolute_revision_pct
-
-fraction_positive_overall <- ces_full |>
+# New stat: average revision by calendar month across all years
+monthly_revision_table <- ces_full_clean |>
+  mutate(
+    month_num = month(date),
+    month_name = month(date, label = TRUE, abbr = TRUE)
+  ) |>
+  group_by(month_num, month_name) |>
   summarise(
-    fraction_positive = mean(revision > 0, na.rm = TRUE)
+    AverageRevision = mean(revision, na.rm = TRUE),
+    AverageAbsoluteRevision = mean(absolute_revision, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(month_num) |>
+  transmute(
+    Month = as.character(month_name),
+    AverageRevision = round(AverageRevision, 3),
+    AverageAbsoluteRevision = round(AverageAbsoluteRevision, 3)
   )
 
-
+datatable(
+  monthly_revision_table,
+  rownames = FALSE,
+  options = list(
+    pageLength = 12,
+    autoWidth = TRUE,
+    dom = "tip",
+    columnDefs = list(list(className = "dt-center", targets = "_all"))
+  )
+) |>
+  formatStyle(
+    columns = names(monthly_revision_table),
+    `text-align` = "center"
+  ) |>
+  htmlwidgets::prependContent(
+    htmltools::tags$h3(
+      "Stat 7: Average CES Revision by Calendar Month ",
+      style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+    )
+  )
 
 ```
  4 visualizations
@@ -390,14 +550,16 @@ fraction_positive_overall <- ces_full |>
 
 library(ggplot2)
 library(scales)
+library(dplyr)
+
 
 # Plot 1: CES employment level over time
 ggplot(ces_full, aes(x = date, y = level)) +
-  geom_line() +  
+  geom_line() +
   labs(
     title = "CES Total Nonfarm Payroll Employment Level (1979–2025)",
     x = "Year",
-    y = "Employment Level"
+    y = "Employment Level (thousands of jobs)"
   ) +
   scale_y_continuous(labels = comma) +
   theme_minimal(base_size = 12) +
@@ -406,47 +568,26 @@ ggplot(ces_full, aes(x = date, y = level)) +
     axis.title = element_text()
   )
 
-library(ggplot2)
-library(scales)
-
-# Plot 2: CES revisions over time by magnitutde
+# Plot 2: CES revisions over time by magnitude
 ggplot(ces_full, aes(x = date, y = revision)) +
-  # draw a line showing revision each month
   geom_line() +
-  # add a horizontal line at zero for reference
   geom_hline(yintercept = 0, linewidth = 0.4) +
   labs(
     title = "CES Revisions Over Time (Final minus Original, 1979–2025)",
     x = "Year",
-    y = "Revision in Employment Level"
+    y = "Revision in Employment Level (thousands of jobs)"
   ) +
-  # format y axis with commas instead of scientific notation
   scale_y_continuous(labels = comma) +
-  # use a clean, simple theme
   theme_minimal(base_size = 12) +
-  # make titles easier to read
   theme(
     plot.title = element_text(face = "bold"),
     axis.title = element_text()
   )
-library(dplyr)
-library(ggplot2)
-library(scales)
 
-
-#plot 3: average positive and negative CES revisions over time (absolute value)
-
-library(dplyr)
-library(ggplot2)
-library(scales)
-
-# Step 1: create dataset summarizing positive and negative revisions by year
+# Plot 3: average positive and negative CES revisions over time (absolute value)
 rev_pos_neg_year <- ces_full |>
   mutate(
-    # label revision type based on sign
     rev_type = if_else(revision >= 0, "Positive Revision", "Negative Revision"),
-    
-    # absolute magnitude of revision so we can compare sizes
     abs_rev = abs(revision)
   ) |>
   group_by(year, rev_type) |>
@@ -455,64 +596,883 @@ rev_pos_neg_year <- ces_full |>
     .groups = "drop"
   )
 
-# Step 2: grouped bar chart with trend lines
 ggplot(rev_pos_neg_year, aes(x = year, y = avg_abs_revision, fill = rev_type)) +
-  
-  # bar chart side by side for each year
   geom_col(position = "dodge") +
-  
-  # trend lines for each revision type
   geom_smooth(
     aes(color = rev_type),
     method = "loess",
     se = FALSE,
     linewidth = 1.2
   ) +
-  
   labs(
     title = "Average Positive and Negative CES Revisions by Year",
     x = "Year",
-    y = "Average Absolute Revision",
+    y = "Average Absolute Revision (thousands of jobs)",
     fill = "Revision Type",
     color = "Trend"
   ) +
-  
   scale_y_continuous(labels = comma) +
-  
   theme_minimal(base_size = 12) +
   theme(
     plot.title = element_text(face = "bold"),
     axis.text.x = element_text(angle = 90, vjust = 0.5)
   )
 
-library(ggplot2)
-library(scales)
-
-
-
-
-
-# Plot 4: Absolute revision percentage over time
-ggplot(ces_full, aes(x = date, y = absolute_revision_pct)) +
-  
-  # draw a line showing how relative revision size changes over time
+# Plot 4: Absolute revision percentage over time using cleaned data
+ggplot(ces_full_clean, aes(x = date, y = absolute_revision_pct)) +
   geom_line() +
-  
   labs(
-    title = "Absolute CES Revision as a Percentage of Final Employment Over Time",
+    title = "CES Revision as a Percentage of Overall Employment",
     x = "Year",
-    y = "Absolute Revision as Percent of Final Employment"
+    y = "Absolute Revision as Percent of Employment"
   ) +
-  
-  # format y axis as percentages, such as 0.25% instead of 0.0025
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
-  
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
   theme_minimal(base_size = 12) +
   theme(
     plot.title = element_text(face = "bold"),
     axis.title = element_text()
   )
 
+```
+# Statistical Analysis
+
+###### A t test is a common tool used in hypothesis testing. Hypothesis testing is a  way to decide whether a pattern we see in data is large enough to conclude that some underlying effect is happening, rather than just the result of randomness. For CES revisions, the question is whether the average revision significantly differs from zero. If CES estimates are unbiased, then the initial and final numbers should, on average, be the same.
+###### To answer this, we set up two competing hypotheses:
+
+###### -  Null hypothesis (H₀): The true average CES revision is 0.
+######  -  Alternative hypothesis (H₁): The true average CES revision is not 0.
+  
+###### The t test evaluates how far the observed sample mean revision is from zero, relative to the amount of natural month 2to month variation in revisions. Even if the true average were exactly zero, revisions would still jump around randomly each month, so a small nonzero mean could occur by chance. The t test asks: Is the observed mean bigger than what chance alone would likely produce?
+###### The main output of the test is the p-value, which tells us how likely it is to observe a sample mean at least this extreme if the true mean were actually zero. In most statistical work, a p-value below 0.05 is considered strong enough to reject the null hypothesis. A p-value below 0.01 is even stronger evidence. When the p-value becomes extremely small, it indicates the observed pattern would be extraordinarily unlikely if the true mean were zero.
+###### The t test also produces a 95% confidence interval, which gives a range of values that are plausible for the true average revision based on the data. If this interval does not include zero, it supports the conclusion that the true mean revision is meaningfully different from zero.
+###### Together, the t test, its p-value, and the confidence interval provide a clear framework for determining whether CES revisions tend to be biased upward or downward, rather than centered around zero.
+
+```{r}
+
+# Task 4: Statistical Inference (t_test and prop_test)
+
+
+library(infer)
+library(dplyr)
+library(lubridate)
+library(glue)
+library(scales)
+library(DT)
+library(tools)
+
+
+# UNIVERSAL COLUMN NAME CLEANER 
+clean_colnames <- function(df) {
+  nn <- names(df)
+  nn <- gsub("_", " ", nn)
+  nn <- trimws(nn)
+  nn <- toTitleCase(nn)
+
+  # uppercase acronyms
+  acronyms <- c("Ci", "Df", "Id", "Na", "P", "T", "R")
+  for (ac in acronyms) {
+    nn <- gsub(paste0("\\b", ac, "\\b"), toupper(ac), nn)
+  }
+
+  names(df) <- nn
+  df
+}
+
+
+
+make_dt <- function(df, title, pageLength = 10) {
+  df2 <- clean_colnames(df)
+
+  dt <- datatable(
+    df2,
+    rownames = FALSE,
+    options = list(
+      pageLength = pageLength,
+      autoWidth  = TRUE,
+      dom        = "tip",
+      columnDefs = list(list(className = "dt-center", targets = "_all"))
+    )
+  ) |>
+    formatStyle(
+      columns = names(df2),
+      `text-align` = "center"
+    ) |>
+    htmlwidgets::prependContent(
+      htmltools::tags$h3(
+        title,
+        style = "text-align:center; font-weight:medium; font-size:18px; color:#222; margin-bottom:20px;"
+      )
+    )
+
+  dt
+}
+
+# Make sure data exists
+ces_full_clean_ok <- ces_full_clean |> filter(!is.na(revision))
+```
+
+
+```{r}
+
+# TEST 1: Is the mean revision different from 0?
+
+test1_result <- t_test(
+  ces_full_clean_ok,
+  response = revision,
+  mu = 0
+)
+
+t1_estimate <- test1_result |> pull(estimate)
+t1_pvalue   <- test1_result |> pull(p_value)
+t1_lower    <- test1_result |> pull(lower_ci)
+t1_upper    <- test1_result |> pull(upper_ci)
+
+test1_display <- test1_result |>
+  transmute(
+    Estimate = round(estimate, 2),
+    T_Df     = round(t_df, 1),
+    P_Value  = signif(p_value, 3),
+    Lower_CI = round(lower_ci, 2),
+    Upper_CI = round(upper_ci, 2)
+  )
+
+make_dt(
+  test1_display,
+  title = "Test 1: Is the Average CES Revision Different From Zero?",
+  pageLength = 5
+)
+
+start_year <- year(min(ces_full_clean_ok$date))
+end_year   <- year(max(ces_full_clean_ok$date))
+
+cat(
+  glue(
+    
+    "A t-test gives p = {signif(t1_pvalue, 3)} with a 95% CI of ",
+    "{comma(round(t1_lower, 1))} to {comma(round(t1_upper, 1))} thousand.\n\n"
+  )
+)
 
 
 ```
+
+##### From 1979 to 2025, the average CES revision was 12 thousand jobs, meaning that the final published estimate was typically higher than the initial release. A t-test comparing the mean revision to zero yields a p-value of 0.00118, and the 95% confidence interval for the true mean revision ranges from 5 to 18 thousand jobs. This means there is statistically significant evidence that revisions are not centered at zero. Essentially, the average revision is small relative to total U.S. employment, but large enough that it can influence short-run interpretations of monthly job reports.
+
+```{r echo=FALSE, results='asis'}
+
+# TEST 2 — Did negative revision frequency change after 2000?
+
+ces_full_clean_period <- ces_full_clean_ok |>
+  mutate(
+    period_post2000 = if_else(year(date) >= 2000, "Post2000", "Pre2000"),
+    neg_numeric     = if_else(revision < 0, 1, 0)   # 
+  ) |>
+  filter(!is.na(neg_numeric))
+
+# Fractions for interpretation
+neg_frac_by_period <- ces_full_clean_period |>
+  group_by(period_post2000) |>
+  summarise(
+    Months = n(),
+    FractionNegative = mean(neg_numeric),
+    .groups = "drop"
+  )
+
+pre_frac <- neg_frac_by_period |>
+  filter(period_post2000 == "Pre2000") |>
+  pull(FractionNegative)
+
+post_frac <- neg_frac_by_period |>
+  filter(period_post2000 == "Post2000") |>
+  pull(FractionNegative)
+
+# infer t_test 
+test2_result <- t_test(
+  ces_full_clean_period,
+  neg_numeric ~ period_post2000,
+  order = c("Pre2000", "Post2000")
+)
+
+t2_estimate <- pull(test2_result, estimate)
+t2_pvalue   <- pull(test2_result, p_value)
+t2_lower    <- pull(test2_result, lower_ci)
+t2_upper    <- pull(test2_result, upper_ci)
+
+test2_display <- tibble(
+  DifferenceInFractions = round(t2_estimate, 3),
+  T_Df                  = round(test2_result$t_df, 1),
+  P_Value               = signif(t2_pvalue, 3),
+  Lower_CI              = round(t2_lower, 3),
+  Upper_CI              = round(t2_upper, 3)
+)
+
+make_dt(
+  test2_display,
+  title = "Test 2: Did Negative Revision Frequency Change After 2000?",
+  pageLength = 5
+)
+
+
+
+```
+
+
+
+##### Before 2000, 40.5% of CES revisions were negative, compared to 44.1% after 2000.
+##### The estimated difference (Post − Pre) is −0.036, meaning that negative revisions were slightly more common after 2000, but only by about 3.6 percentage points.
+
+##### A t-test gives:
+  -  Difference in fractions: −0.036
+  -  95% confidence interval: −0.119 to 0.046
+  -  p-value: 0.387
+  -  Degrees of freedom: 537.8
+  
+##### This confidence interval includes both negative and positive values, indicating substantial uncertainty about the true change. The p-value of 0.387 is far above conventional significance levels (such as 0.05), showing that the observed difference is well within the range of natural random variation.
+
+##### There is no evidence that the frequency of negative revisions changed significantly after the year 2000. The rate of negative revisions appears largely stable over time, with no indication of a structural shift.
+
+# BLS Fact Check
+
+
+##  Does the Data Support the White House’s Claim?
+
+The Trump administration’s public justification for firing the Bureau of Labor Statistics Commissioner Erika McEntarfer makes a bold claim. As the White House put it, the BLS under her leadership has shown “a lengthy history of inaccuracies and incompetence”, and published “overly optimistic jobs numbers - only for those numbers to be quietly revised later.”
+
+Trump argues that Commissioner McEntarfer repeatedly published inflated preliminary job numbers during the Biden administration, making the economy appear stronger than it was. He further claims that she continued this pattern after he took office, now suggesting that overly optimistic job reports would discourage the Federal Reserve from cutting interest rates, a policy he publicly supports.
+
+The White House claim suggests two things about the period under McEntarfer which started February 2024:
+
+  - Large revisions are more common than in earlier decades.
+  - Negative revisions are also more common, implying that initial job estimates were systematically overstated.
+
+To evaluate whether the data supports this narrative, we perform two statistical comparisons between the McEntarfer era (Feb 2024–Jun 2025) and the historical period (1979–Jan 2024):
+
+**Test A: Is the share of substantial revisions (revisions greater than 50,000 jobs) significantly higher under McEntarfer?**
+
+**Test B: Is the share of negative revisions significantly higher under McEntarfer?**
+
+If either proportion shows a statistically significant increase, then the data would give empirical support to the White House’s claim. 
+
+If both changes are statistically insignificant, the historical revision record does not support the rationale for the dismissal.
+
+
+#### **Test A: Is the share of substantial revisions more common under McEntarfer? **
+
+```{r}
+# Test A: Is the share of substantial revisions more common under McEntarfer?
+
+library(dplyr)
+library(lubridate)
+library(infer)
+
+# Define eras and a "substantial revision" indicator 
+ces_fc1 <- ces_full_clean |>
+  mutate(
+    era = if_else(
+      date >= as.Date("2024-02-01") & date <= as.Date("2025-06-01"),
+      "McEntarfer",
+      "Earlier"
+    ),
+    substantial = as.integer(abs(revision) > 50)
+  )
+
+# Summary table (rounded to 3 decimals)
+fc1a_summary <- ces_fc1 |>
+  group_by(era) |>
+  summarise(
+    Months              = n(),
+    FractionSubstantial = round(mean(substantial, na.rm = TRUE), 3),
+    .groups = "drop"
+  )
+
+make_dt(
+  fc1a_summary,
+  title = "Fraction of Substantial Revisions (>|50,000| Jobs), Earlier vs McEntarfer",
+  pageLength = 5
+)
+
+# Two-sample Welch t-test 
+fc1a_test <- t_test(
+  ces_fc1,
+  substantial ~ era,
+  order = c("Earlier", "McEntarfer")
+)
+
+# Display table rounded to 3 decimals
+fc1a_display <- fc1a_test |>
+  transmute(
+    Difference = round(estimate, 3),
+    T_Df       = round(t_df, 3),
+    P_Value    = signif(p_value, 3),
+    Lower_CI   = round(lower_ci, 3),
+    Upper_CI   = round(upper_ci, 3)
+  )
+
+make_dt(
+  fc1a_display,
+  title = "Test A: Are Substantial Revisions More Common in the McEntarfer Era?",
+  pageLength = 5
+)
+
+# Save values for inline use
+fc1a_diff  <- round(as.numeric(fc1a_test$estimate), 3)
+fc1a_p     <- signif(as.numeric(fc1a_test$p_value), 3)
+fc1a_lower <- round(as.numeric(fc1a_test$lower_ci), 3)
+fc1a_upper <- round(as.numeric(fc1a_test$upper_ci), 3)
+
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(scales)
+
+# Build dataset for substantial revisions only
+substantial_yearly <- ces_full_clean |>
+  mutate(
+    year = year(date),
+    substantial = abs(revision) > 50,                # 50 = 50,000 jobs
+    era = if_else(
+      date < as.Date("2024-02-01"),
+      "Earlier",
+      "McEntarfer"
+    )
+  ) |>
+  filter(substantial) |>                              # keep only substantial revisions
+  group_by(year, era) |>
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  )
+
+ggplot(substantial_yearly, aes(x = year, y = Count, fill = era)) +
+  geom_col() +
+  scale_fill_manual(
+    values = c(
+      "Earlier"     = "#C92A2A",  # red
+      "McEntarfer"  = "#1971C2"   # blue
+    )
+  ) +
+  labs(
+    title = "Number of Substantial CES Revisions per Year",
+    subtitle = "Substantial revisions defined as |revision| > 50,000 jobs",
+    x = "Year",
+    y = "Count of Substantial Revisions",
+    fill = "Era"
+  ) +
+  scale_x_continuous(breaks = seq(1980, 2025, 5)) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title    = element_text(face = "bold"),
+    plot.subtitle = element_text(),
+    axis.text.x   = element_text(angle = 90, vjust = 0.5)
+  )
+
+```
+
+To evaluate whether substantial revisions were more common under Commissioner McEntarfer, we tested the hypotheses:
+
+H₀: The proportion of substantial revisions is the same in the McEntarfer era and the earlier period.
+
+H₁: The proportion of substantial revisions is different between the two periods.
+
+The estimated difference in proportions (McEntarfer minus Earlier) was −0.058, meaning the McEntarfer era actually had a slightly lower share of substantial revisions. The 95% confidence interval ranged from −0.326 to 0.209, which includes zero. This indicates that the true difference could reasonably be negative, zero, or positive.
+
+The p-value for this test was 0.65, which is far greater than the conventional 0.05 threshold. Because the p-value is so large, we fail to reject the null hypothesis. In practical terms, there is no statistical evidence that substantial revisions became more common under McEntarfer. The small observed difference is well within the level of variation that would be expected by random chance.
+
+Additionally, the short tenure of McEntarfer lends to a very small sample size to test on for that era. 
+
+
+
+#### **Test B: Are negative revisions more common under McEntarfer? **
+
+```{r}
+
+# Test B: Are negative revisions more common under McEntarfer?
+
+
+ces_fc2 <- ces_full_clean |>
+  mutate(
+    era = if_else(
+      date >= as.Date("2024-02-01") & date <= as.Date("2025-06-01"),
+      "McEntarfer",
+      "Earlier"
+    ),
+    negative_rev = as.integer(revision < 0)
+  )
+
+# Summary table (rounded to 3 decimals)
+fc2b_summary <- ces_fc2 |>
+  group_by(era) |>
+  summarise(
+    Months           = n(),
+    FractionNegative = round(mean(negative_rev, na.rm = TRUE), 3),
+    .groups = "drop"
+  )
+
+make_dt(
+  fc2b_summary,
+  title = "Fraction of Negative Revisions, Earlier vs McEntarfer",
+  pageLength = 5
+)
+
+# Welch t-test on the 0/1 indicator
+fc2b_test <- t_test(
+  ces_fc2,
+  negative_rev ~ era,
+  order = c("Earlier", "McEntarfer")
+)
+
+# Display table rounded to 3 decimals
+fc2b_display <- fc2b_test |>
+  transmute(
+    Difference = round(estimate, 3),
+    T_Df       = round(t_df, 3),
+    P_Value    = signif(p_value, 3),
+    Lower_CI   = round(lower_ci, 3),
+    Upper_CI   = round(upper_ci, 3)
+  )
+
+make_dt(
+  fc2b_display,
+  title = "Test B: Are Negative Revisions More Common in the McEntarfer Era?",
+  pageLength = 5
+)
+
+# Save values for inline use
+fc2b_diff  <- round(as.numeric(fc2b_test$estimate), 3)
+fc2b_p     <- signif(as.numeric(fc2b_test$p_value), 3)
+fc2b_lower <- round(as.numeric(fc2b_test$lower_ci), 3)
+fc2b_upper <- round(as.numeric(fc2b_test$upper_ci), 3)
+
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(lubridate)
+
+# Add an era variable for coloring
+ces_rev_era <- ces_full |>
+  mutate(
+    era = if_else(
+      date < as.Date("2024-02-01"),
+      "Earlier",
+      "McEntarfer"
+    )
+  )
+
+ggplot(ces_rev_era, aes(x = date, y = revision, color = era)) +
+  geom_line() +
+  geom_hline(yintercept = 0, linewidth = 0.4) +
+  scale_color_manual(
+    values = c(
+      "Earlier"     = "#C92A2A",  # red
+      "McEntarfer"  = "#1971C2"   # blue
+    )
+  ) +
+  labs(
+    title = "CES Revisions Over Time (Earlier vs McEntarfer Period)",
+    subtitle = "Revisions shown as final minus original estimates",
+    x = "Year",
+    y = "Revision in Employment Level (thousands of jobs)",
+    color = "Era"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title    = element_text(face = "bold"),
+    plot.subtitle = element_text(),
+    axis.title    = element_text()
+  )
+
+```
+To evaluate whether negative revisions were more common under Commissioner McEntarfer, we tested the hypotheses:
+
+H₀: The proportion of negative revisions is the same in the McEntarfer era and the earlier period.
+
+H₁: The proportions differ between the two periods.
+
+The earlier period had a negative revision rate of 0.418, compared with 0.647 under McEntarfer, a raw increase of about 23 percentage points. The estimated difference in proportions (McEntarfer minus Earlier) was –0.229, and the 95% confidence interval ranged from –0.485 to 0.027. Because this interval includes zero, the data do not rule out the possibility that the true difference is actually zero or even slightly positive.
+
+The p-value for the test was 0.0759, which is above 0.05. Since the p-value is not small enough to reject the null hypothesis, we conclude that there is not sufficient statistical evidence that negative revisions became more common under McEntarfer. Although the observed difference is large in magnitude, the limited number of months in the McEntarfer period (n = 17) means the estimate is imprecise, and the result is not statistically significant at the 5% level.
+
+Citation:
+White House. “BLS Has Lengthy History of Inaccuracies, Incompetence.” whitehouse.gov, August 1, 2025. https://www.whitehouse.gov/articles/2025/08/bls-has-lengthy-history-of-inaccuracies-incompetence/
+
+
+
+## **Does the Data Support the Claim That the BLS Favors Democratic Administrations?** 
+
+Beyond the debate over Commissioner McEntarfer’s dismissal, some (fictional) political commentators have argued that the Bureau of Labor Statistics tends to produce stronger employment numbers when a Democrat is in the White House. 
+
+The claim suggests that the CES estimates are somehow influenced by partisan considerations, leading to higher published job numbers and stronger perceived employment growth during Democratic administrations.
+
+As one commentator put it, the BLS “always seems to report better job numbers for Democrats than Republicans” implying that the agency systematically favors one party over the other. 
+
+This claim implies two measurable expectations about the historical jobs data:
+
+  - Employment levels should be higher under Democratic presidents because the BLS allegedly portrays stronger economic performance during Democratic administrations.
+  - Revisions under democratic administrations should be more often negative. 
+  
+  
+To evaluate whether the data support this narrative, we compare the full CES record from 1979 to 2025 across presidential administrations, classifying each month according to the president’s political party. This allows us to test whether differences in employment levels and job growth between Democratic and Republican presidencies are statistically meaningful or simply reflect long term economic trends such as population growth and business cycles.
+We perform two statistical comparisons between Democrat led months and Republican led months:
+
+**Test C: Are CES employment levels significantly higher during Democratic presidencies?**
+
+**Test D: Are monthly CES revisions more often negative during Democratic presidencies?**
+
+If either test reveals statistically significant differences, that would provide empirical support for the claim that CES employment reporting favors Democratic administrations. If both differences are statistically insignificant, the historical data would not support the allegation that the BLS is biased to either party.
+
+If either test reveals statistically significant differences, that would provide empirical support for the claim that CES employment reporting favors Democratic administrations. If both differences are statistically insignificant, the historical data would not support the allegation that the BLS is biased to either party.
+
+
+### **Test C: Are CES employment levels significantly higher during Democratic presidencies?**
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(tidyr)
+library(infer)
+library(ggplot2)
+library(scales)
+
+# 1. Presidential party lookup table (1979–2025)
+presidents_party <- expand_grid(
+  year = 1979:2025,
+  month = month.name,
+  president = NA_character_,
+  party = NA_character_
+) |>
+  mutate(
+    president = case_when(
+      (month == "January")  & (year == 1979) ~ "Carter",
+      (month == "February") & (year == 1981) ~ "Reagan",
+      (month == "February") & (year == 1989) ~ "Bush 41",
+      (month == "February") & (year == 1993) ~ "Clinton",
+      (month == "February") & (year == 2001) ~ "Bush 43",
+      (month == "February") & (year == 2009) ~ "Obama",
+      (month == "February") & (year == 2017) ~ "Trump I",
+      (month == "February") & (year == 2021) ~ "Biden",
+      (month == "February") & (year == 2025) ~ "Trump II",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  tidyr::fill(president) |>
+  mutate(
+    party = if_else(
+      president %in% c("Carter", "Clinton", "Obama", "Biden"),
+      "D",
+      "R"
+    ),
+    month_num = match(month, month.name)
+  )
+
+# 2. Join CES levels to presidents/parties and build pct_change
+
+
+ces_party <- ces_full |>
+  mutate(
+    year = year(date),
+    month_num = month(date)
+  ) |>
+  left_join(
+    presidents_party |>
+      select(year, month_num, president, party),
+    by = c("year", "month_num")
+  ) |>
+  filter(!is.na(party)) |>
+  arrange(date) |>
+  mutate(
+    change = level - lag(level),
+    pct_change = change / lag(level)
+  ) |>
+  filter(!is.na(change), !is.na(pct_change))
+
+# 3. Test C: Are monthly percent job gains higher under Democratic presidents?
+
+# Summary table by party (normalized percent changes)
+party_pct_summary <- ces_party |>
+  group_by(party) |>
+  summarise(
+    Months          = n(),
+    MeanPctChange   = round(mean(pct_change, na.rm = TRUE), 3),
+    MedianPctChange = round(median(pct_change, na.rm = TRUE), 3),
+    SDPCT           = round(sd(pct_change, na.rm = TRUE), 3),
+    .groups = "drop"
+  ) |>
+  mutate(
+    PartyLabel = if_else(party == "D", "Democrat", "Republican")
+  ) |>
+  select(
+    Party = PartyLabel,
+    Months,
+    MeanPctChange,
+    MedianPctChange,
+    SDPCT
+  )
+
+make_dt(
+  party_pct_summary,
+  title = "Monthly Percent Employment Growth by Presidential Party (1979–2025)",
+  pageLength = 5
+)
+
+# Welch t-test on normalized percent changes
+party_pct_test <- t_test(
+  ces_party,
+  pct_change ~ party,
+  order = c("R", "D"),    # estimate = Democrat minus Republican
+  alternative = "greater" # test if Democrats > Republicans
+)
+
+party_pct_display <- party_pct_test |>
+  transmute(
+    Difference = round(estimate, 3),
+    T_Df       = round(t_df, 3),
+    P_Value    = signif(p_value, 3),
+    Lower_CI   = round(lower_ci, 3),
+    Upper_CI   = round(upper_ci, 3)
+  )
+
+make_dt(
+  party_pct_display,
+  title = "Test C: Are Monthly Percent Job Gains Higher Under Democratic Presidents?",
+  pageLength = 5
+)
+
+
+pct_diff  <- round(as.numeric(party_pct_test$estimate), 3)
+pct_p     <- signif(as.numeric(party_pct_test$p_value), 3)
+pct_lower <- round(as.numeric(party_pct_test$lower_ci), 3)
+pct_upper <- round(as.numeric(party_pct_test$upper_ci), 3)
+
+# 4. Visual 1: CES employment levels over time colored by party
+ggplot(ces_party, aes(x = date, y = level, color = party)) +
+  geom_line() +
+  scale_color_manual(
+    values = c("D" = "#1F77B4", "R" = "#D62728"),
+    labels = c("D" = "Democrat", "R" = "Republican")
+  ) +
+  labs(
+    title = "CES Employment Levels by Presidential Party",
+    x = "Year",
+    y = "Employment Level (thousands of jobs)",
+    color = "Party"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text()
+  )
+
+# 5. Visual 2: Average monthly percent change by president 
+president_change_summary <- ces_party |>
+  group_by(president, party) |>
+  summarise(
+    MeanPctChange = mean(pct_change, na.rm = TRUE),
+    Months = n(),
+    .groups = "drop"
+  ) |>
+  mutate(
+    President = factor(
+      president,
+      levels = c("Carter", "Reagan", "Bush 41", "Clinton",
+                 "Bush 43", "Obama", "Trump I", "Biden", "Trump II")
+    )
+  )
+
+ggplot(president_change_summary,
+       aes(x = President, y = MeanPctChange, fill = party)) +
+  geom_col() +
+  scale_fill_manual(
+    values = c("D" = "#1F77B4", "R" = "#D62728"),
+    labels = c("D" = "Democrat", "R" = "Republican")
+  ) +
+  labs(
+    title = "Average Monthly Percent Job Growth by President",
+    x = "President",
+    y = "Average Monthly Percent Change",
+    fill = "Party"
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
+Test C: Are Monthly Percent Job Gains Higher Under Democratic Presidents?
+To evaluate the claim that the Bureau of Labor Statistics tends to report stronger job growth under Democratic administrations, we compared the monthly percent change in total nonfarm payroll employment across presidential parties from 1979 to 2025.
+
+The hypotheses for this test were:
+
+H₀: The mean monthly percent job growth is the same under Democratic and Republican presidents.
+
+H₁: The mean monthly percent job growth is higher under Democratic presidents.
+
+
+Across the full sample, Democratic presidents oversaw 264 months of data with an average monthly percent gain of 0.002, while Republican presidents oversaw 293 months with an average gain of 0.001. The median growth rate was also slightly higher for Democrats (0.002 versus 0.001). However, Republicans had much larger variability in their monthly changes, with a standard deviation of 0.009, compared with 0.002 for Democrats.
+
+A Welch t-test comparing the distributions found an estimated difference of –0.001 (Democrat minus Republican), with a 95% confidence interval ranging from –0.002 to approximately 0.000. The p-value was 0.956, which is far above the conventional significance threshold of 0.05.
+
+Because the p-value is not small and the confidence interval includes zero, we fail to reject the null hypothesis. The data does not provide statistical evidence that monthly percent job growth is higher under Democratic presidents. The small observed difference in averages is well within the range that could be explained by normal  variation rather than a systematic pattern related to presidential party.
+
+### **Test D: Are monthly CES revisions more often negative during Democratic presidencies?**
+
+```{r}
+# Test D: Are monthly CES revisions more often negative during Democratic presidencies?
+
+library(dplyr)
+library(infer)
+library(DT)
+library(ggplot2)
+library(scales)
+
+# ces_party is assumed to contain:
+#   date, level, revision, president, party ("D" / "R")
+
+# 1. Add a 0/1 indicator for negative revisions
+ces_party_neg <- ces_party |>
+  mutate(
+    negative = as.integer(revision < 0)   # 1 = negative revision, 0 = not
+  )
+
+# 2. Summary table: fraction of negative revisions by party (rounded to 3 decimals)
+td_summary <- ces_party_neg |>
+  group_by(party) |>
+  summarise(
+    Months           = n(),
+    FractionNegative = round(mean(negative, na.rm = TRUE), 3),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Party = if_else(party == "D", "Democrat", "Republican")
+  ) |>
+  select(
+    Party,
+    Months,
+    FractionNegative
+  )
+
+make_dt(
+  td_summary,
+  title = "Fraction of Negative CES Revisions by Presidential Party (1979–2025)",
+  pageLength = 5
+)
+
+# 3. Test D: Are negative revisions more common under Democrats?
+#    H0: mean(negative) is the same for D and R
+#    H1: mean(negative) is higher for Democrats
+
+td_test <- t_test(
+  ces_party_neg,
+  negative ~ party,
+  order = c("R", "D"),       # estimate = Democrat minus Republican
+  alternative = "greater"    # test if Democrats have more negative revisions
+)
+
+td_display <- td_test |>
+  transmute(
+    Difference = round(estimate, 3),
+    T_Df       = round(t_df, 3),
+    P_Value    = signif(p_value, 3),
+    Lower_CI   = round(lower_ci, 3),
+    Upper_CI   = round(upper_ci, 3)
+  )
+
+make_dt(
+  td_display,
+  title = "Test D: Are Negative Revisions More Common Under Democratic Presidents?",
+  pageLength = 5
+)
+
+# Save key values for inline text in your write-up
+td_diff  <- round(as.numeric(td_test$estimate), 3)
+td_p     <- signif(as.numeric(td_test$p_value), 3)
+td_lower <- round(as.numeric(td_test$lower_ci), 3)
+td_upper <- round(as.numeric(td_test$upper_ci), 3)
+
+# 4. Visual 1: Fraction of negative revisions by president (red = R, blue = D)
+
+td_pres <- ces_party_neg |>
+  group_by(president, party) |>
+  summarise(
+    Months           = n(),
+    FractionNegative = mean(negative, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    President = factor(
+      president,
+      levels = c(
+        "Carter", "Reagan", "Bush 41", "Clinton",
+        "Bush 43", "Obama", "Trump I", "Biden", "Trump II"
+      )
+    )
+  )
+
+ggplot(td_pres,
+       aes(x = President, y = FractionNegative, fill = party)) +
+  geom_col() +
+  scale_fill_manual(
+    values = c("D" = "#1F77B4", "R" = "#D62728"),
+    labels = c("D" = "Democrat", "R" = "Republican")
+  ) +
+  labs(
+    title = "Share of Negative CES Revisions by President",
+    x = "President",
+    y = "Fraction of Negative Revisions",
+    fill = "Party"
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title  = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# 5. Visual 2: Distribution of revisions by party (boxplot, red vs blue)
+
+ggplot(ces_party_neg,
+       aes(x = party, y = revision, fill = party)) +
+  geom_boxplot(outlier.alpha = 0.2) +
+  scale_fill_manual(
+    values = c("D" = "#1F77B4", "R" = "#D62728"),
+    labels = c("D" = "Democrat", "R" = "Republican")
+  ) +
+  scale_x_discrete(
+    labels = c("D" = "Democrat", "R" = "Republican")
+  ) +
+  labs(
+    title = "Distribution of CES Revisions by Presidential Party",
+    x = "Party",
+    y = "Revision (thousands of jobs)",
+    fill = "Party"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+Test D: Are Negative CES Revisions More Common Under Democratic Presidents?
+
+To evaluate the claim that the BLS produces more downward-corrected job numbers when Democrats are in office (meaning their initial bias is to publish higher job numbers during Democrat administrations) we tested whether negative revisions occur more frequently under Democratic presidents. 
+
+The hypotheses are:
+
+H₀: The proportion of negative CES revisions is the same under Democratic and Republican presidents.
+
+H₁: The proportion of negative revisions is higher under Democratic presidents.
+
+During the 1979–2025 period, 36 percent of CES revisions were negative during Democratic presidencies, compared with 48.1 percent during Republican presidencies. This already runs counter to the narrative: negative revisions were actually more common under Republicans.
+
+The Welch t-test formalizes this comparison. The estimated difference in proportions (Democrat minus Republican) is: 0.121, meaning Republicans experienced a 12.1-percentage-point higher rate of negative revisions.
+
+The 95 percent confidence interval ranges from 0.053 to for now, 1, indicating that the true difference is very likely positive. The p-value is 0.00184, which is far below the 0.05 significance threshold.
+Because the p-value is extremely small, we reject the null hypothesis. There is strong statistical evidence that negative revisions were not more common under Democrats. In fact, they were significantly less common.
+
+These results contradict the fictional commentator’s claim: the historical record shows that CES revisions were more frequently negative under Republican administrations, not Democratic ones.
