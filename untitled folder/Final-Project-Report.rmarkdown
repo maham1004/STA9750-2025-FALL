@@ -1,0 +1,78 @@
+---
+title: "Course Project"
+---
+
+SQ: To what extent do socioeconomic conditions predict variation in subway crime rates? 
+
+## Crime Data Download and Cleaning
+
+To prepare the NYPD complaint data for analysis, I restricted the dataset to subway-specific incidents and performed several data cleaning steps to ensure analytical quality and spatial accuracy. 
+
+First, we standardized variable names, converted complaint dates, and extracted components such as year and month. Because ZIP-code assignment requires geographic precision, all rows lacking valid latitude or longitude were removed. 
+
+We then filtered out administrative and non-criminal incidents, retaining only penal law complaint types relevant to the study of subway crime. Duplicate complaint numbers were removed. Extreme coordinate values falling outside the bounds of New York City were excluded. The resulting dataset contains unique, properly geolocated subway crime complaints suitable for mapping to ZIP codes. These cleaning choices are necessary to produce acurate crime rates for neighborhood level comparison.
+
+```{r}
+
+library(httr2)
+library(readr)
+
+dir.create(file.path("data", "courseproject"), showWarnings = FALSE, recursive = TRUE)
+
+### NYPD ARREST DATA - HISTORIC
+
+url_data_arrest <- "https://data.cityofnewyork.us/api/archival.csv?id=8h9b-rp9u&version=1106&method=export"
+
+resp_data_arrest <- request(url_data_arrest) |>
+  req_progress() |>
+  req_perform(path = file.path("data", "courseproject", "nypd_arrests_historic.csv"))
+
+arrest_df <- read_csv(file.path("data", "courseproject", "nypd_arrests_historic.csv"))
+
+
+### NYPD COMPLAINT DATA - HISTORIC
+
+url_data_complaint <- "https://data.cityofnewyork.us/api/archival.csv?id=qgea-i56i&version=19534&method=export"
+
+resp_data_complaint <- request(url_data_complaint) |>
+  req_progress() |>
+  req_perform(path = file.path("data", "courseproject", "nypd_complaint_historic.csv"))
+
+complaint_df <- read_csv(file.path("data", "courseproject", "nypd_complaint_historic.csv"))
+
+```
+
+```{r}
+
+library(tidyverse)
+library(lubridate)
+
+# FILTERS
+
+## ARRESTS DATA
+
+filtered_arrest_df <- arrest_df |> # result (32898) same as columbia 
+  filter(jurisdiction_code == 1) |>
+  mutate(date = as.Date(arrest_date)) |>
+  filter(between(date,
+                 as.Date("2018-09-01"), 
+                 as.Date("2023-08-31")))
+
+## COMPLAINTS DATA
+
+filtered_comp_df1 <- complaint_df |>  # result 52136
+  filter(juris_desc == "N.Y. TRANSIT POLICE") |>
+  mutate(date = as.Date(cmplnt_fr_dt)) |>
+  filter(between(date, 
+                 as.Date("2018-09-01"), 
+                 as.Date("2023-08-31"))) 
+
+filtered_comp_df2 <- complaint_df |>
+  filter(prem_typ_desc == "TRANSIT - NYC SUBWAY") |> # result 51402 
+  mutate(date = as.Date(cmplnt_fr_dt)) |>
+  filter(between(date, 
+                 as.Date("2018-09-01"), 
+                 as.Date("2023-08-31"))) 
+
+```
+
