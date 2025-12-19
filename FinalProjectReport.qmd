@@ -1,4 +1,4 @@
-getwd()---
+---
 title: "Course Project"
 author: "Maham Hassan"
 date: "December 1, 2025"
@@ -45,7 +45,7 @@ if (!file.exists(complaint_path)) {
   base_url <- "https://data.cityofnewyork.us/resource/qgea-i56i.csv"
 
   req <- request(base_url) |>
-    req_url_query(
+    req_url_query(quar
       "$where" = "cmplnt_fr_dt between '2018-09-01T00:00:00.000' and '2023-08-31T23:59:59.000' AND prem_typ_desc = 'TRANSIT - NYC SUBWAY'",
       "$limit" = "500000"
     ) |>
@@ -1566,3 +1566,4 @@ ggplot(zip_summary_trimmed, aes(x = Income, y = avg_crime_per_100k_rides)) +
 A key limitation of this analysis is the imperfect measurement of exposure. Subway ridership data are not available at the ZIP code level, so station ridership had to be spatially assigned to ZIP codes based on station locations. This approach does not fully capture how riders move across neighborhoods or where trips actually begin and end, which may introduce measurement error in the normalized crime rates. 
 
 Future work could improve this analysis by incorporating additional socioeconomic indicators beyond median income, such as unemployment, housing instability, or educational attainment. Finally, organizing and analyzing crime by offense type could reveal whether certain crimes are more strongly associated with specific neighborhood characteristics, providing a more nuanced understanding of how socioeconomic conditions relate to subway crime risk for policy initiatives.
+
