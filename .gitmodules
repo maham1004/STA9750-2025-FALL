@@ -1,0 +1,3 @@
+[submodule "docs/projfin"]
+	path = docs/projfin
+	url = https://github.com/maham1004/cop.git
