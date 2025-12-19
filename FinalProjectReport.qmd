@@ -1,0 +1,1568 @@
+---
+title: "Course Project"
+author: "Maham Hassan"
+date: "December 1, 2025"
+format:
+  html:
+    theme: morph
+    code-fold: true
+    toc: true
+editor: source
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+SQ: To what extent do socioeconomic conditions predict variation in subway crime rates?
+
+## Introduction
+
+This project examines the question, "Is there a correlation between crimes in the MTA and the stations where they occur?"  Using NYPD subway crime complaint data alongside MTA ridership statistics, the broader goal is to understand not just where subway crime occurs, but whether observed patterns reflect differences in exposure, station usage, or neighborhood characteristics. Prior research has shown that subway crime declined during COVID and rebounded unevenly as ridership returned, raising questions about how safety has evolved in the post-pandemic period.
+
+Within this broader framework, my subquestion focuses on the role of neighborhood socioeconomic conditions. Specifically, I examine whether subway crime rates differ across ZIP codes with varying median household incomes after adjusting for ridership. By linking crime incidents to ZIP code–level income data and normalizing by rider volume, this analysis explores whether socioeconomic context helps explain variation in subway crime beyond raw counts alone.
+
+
+## Data Acquisition
+
+To prepare the NYPD complaint data for analysis, we restricted the dataset to incidents that occurred specifically within the subway system and applied several cleaning steps to improve data quality and spatial accuracy. First, we standardized variable names, converted complaint dates into usable formats, and extracted the year and month for later analysis. Because assigning complaints to ZIP codes requires precise geographic information, we removed all records missing valid latitude or longitude values. We then filtered out administrative and non-criminal incidents, retaining only penal-law complaint types relevant to the study of subway crime. Duplicate complaint numbers were removed to avoid double-counting, and records with coordinates falling outside the geographic bounds of New York City were excluded. The resulting dataset consists of unique, accurately geocoded subway crime complaints that can be reliably mapped to ZIP codes and merged with socioeconomic data, supporting the construction of accurate neighborhood-level crime rates.
+
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(httr2)
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(janitor)
+
+# Create folder if needed
+dir.create(file.path("data", "courseproject"), showWarnings = FALSE, recursive = TRUE)
+
+# Download / read complaint data
+complaint_path <- file.path("data", "courseproject", "nypd_complaint_subway_2018_2023.csv")
+
+if (!file.exists(complaint_path)) {
+  base_url <- "https://data.cityofnewyork.us/resource/qgea-i56i.csv"
+
+  req <- request(base_url) |>
+    req_url_query(
+      "$where" = "cmplnt_fr_dt between '2018-09-01T00:00:00.000' and '2023-08-31T23:59:59.000' AND prem_typ_desc = 'TRANSIT - NYC SUBWAY'",
+      "$limit" = "500000"
+    ) |>
+    req_progress()
+
+  req |> req_perform(path = complaint_path)
+}
+
+complaint_df <- read_csv(complaint_path, show_col_types = FALSE)
+
+# Restrict to study date range
+filtered_comp_df2 <- complaint_df |>
+  mutate(date = as.Date(cmplnt_fr_dt)) |>
+  filter(
+    between(date, as.Date("2018-09-01"), as.Date("2023-08-31"))
+  )
+
+# Clean and simplify columns
+crime_clean <- filtered_comp_df2 %>%
+  clean_names() %>%
+  rename(
+    complaint_number    = cmplnt_num,
+    complaint_datetime  = cmplnt_fr_dt,
+    offense_description = ofns_desc,
+    offense_severity    = law_cat_cd,
+    borough             = boro_nm
+  ) %>%
+  mutate(
+    date    = as.Date(complaint_datetime),
+    year    = year(date),
+    month   = month(date),
+    offense = offense_description
+  ) %>%
+  filter(
+    !is.na(latitude),
+    !is.na(longitude),
+    !is.na(date),
+    !is.na(offense),
+    offense != ""
+  ) %>%
+  filter(
+    !offense %in% c(
+      "ADMINISTRATIVE CODE",
+      "NON-CRIMINAL",
+      "UNAUTHORIZED USE VEHICLE 3 (UUV)",
+      "CHILD ABANDONMENT/NEGLECT"
+    )
+  ) %>%
+  select(
+    complaint_number,
+    date, year, month,
+    offense,
+    offense_severity,
+    borough,
+    latitude, longitude
+  ) %>%
+  distinct(complaint_number, .keep_all = TRUE) %>%
+  filter(
+    between(latitude, 40.40, 40.95),
+    between(longitude, -74.30, -73.65)
+  )
+
+# Summary table
+crime_summary <- crime_clean %>%
+  summarise(
+    total_complaints = n(),
+    felonies         = sum(offense_severity == "FELONY", na.rm = TRUE),
+    misdemeanors     = sum(offense_severity == "MISDEMEANOR", na.rm = TRUE),
+    violations       = sum(offense_severity == "VIOLATION", na.rm = TRUE),
+    first_date       = min(date),
+    last_date        = max(date)
+  )
+
+crime_summary
+
+#examine the data
+
+head(crime_clean)
+
+
+
+
+```
+
+```{r crime-table, message=FALSE}
+library(DT)
+library(htmltools)
+
+# Global CSS for Calibri + title bar + row striping
+custom_css <- tags$style(HTML("
+  /* Global Calibri font */
+  table.dataTable,
+  table.dataTable th,
+  table.dataTable td,
+  div.dataTables_info,
+  div.dataTables_paginate,
+  div.dataTables_filter,
+  div.dataTables_length,
+  .dataTables_wrapper {
+    font-family: Calibri, sans-serif !important;
+  }
+
+  /* Title bar styling */
+  caption {
+    background-color: #0039A6 !important;   /* MTA blue */
+    color: white !important;
+    padding: 10px;
+    font-size: 120% !important;
+    font-weight: bold !important;
+    caption-side: top !important;
+    text-align: center !important;
+  }
+
+  /* Slightly darker striped table body */
+  table.dataTable tbody tr:nth-child(odd) {
+    background-color: white !important;
+  }
+  table.dataTable tbody tr:nth-child(even) {
+    background-color: #efefef !important;   /* slightly darker gray */
+  }
+
+  /* Subtle hover */
+  table.dataTable tbody tr:hover {
+    background-color: #e0e0e0 !important;
+  }
+"))
+
+# Display-friendly dataset with rounded coordinates
+crime_display <- crime_clean %>%
+  mutate(
+    latitude  = round(latitude, 3),
+    longitude = round(longitude, 3)
+  ) %>%
+  transmute(
+    Date               = date,
+    Borough            = borough,
+    Offense            = offense,
+    `Offense severity` = offense_severity,
+    Latitude           = latitude,
+    Longitude          = longitude
+  )
+
+datatable(
+  crime_display,
+  rownames = FALSE,
+  caption = "Cleaned NYC Subway Crime Complaints, 2018–2023",
+  options = list(
+    pageLength   = 5,
+    lengthChange = FALSE,
+    autoWidth    = TRUE,
+    scrollX      = FALSE,
+    dom          = 'tpif',
+    columnDefs = list(
+      list(width = '18%', targets = 0),  # Date
+      list(width = '15%', targets = 1),  # Borough
+      list(width = '40%', targets = 2),  # Offense
+      list(width = '15%', targets = 3),  # Offense severity
+      list(width = '6%',  targets = 4),  # Latitude
+      list(width = '6%',  targets = 5)   # Longitude
+    )
+  ),
+  class = 'display compact'
+) %>%
+  htmlwidgets::prependContent(custom_css)
+```
+
+
+
+
+
+
+
+## Income by ZCTA Data Downloading and Cleaning
+
+To examine whether socioeconomic conditions help explain variation in subway crime, we rely on median household income as a neighborhood-level indicator. Median income is widely used in social science research as a summary measure of economic resources and living conditions, and it provides a consistent, comparable benchmark across New York City ZIP Code Tabulation Areas (ZCTAs, but for the purpose of this project we will call them zipcodes). To obtain these data programmatically, we use the U.S. Census Bureau’s American Community Survey (ACS) 2023 5-year estimates, accessed through the tidycensus interface, which provides reproducible API-based retrieval. After downloading the ACS table containing median household income, we retain only the essential fields—ZCTA identifiers and estimated income values, rename them using analysis friendly variable names, and save a cleaned dataset for later merging with crime data. 
+```{r, results='hide', message=FALSE, warning=FALSE}
+# ACS income setup
+
+library(tidycensus)
+library(dplyr)
+library(readr)
+
+acs_year <- 2023
+
+# Download ACS 2023 median household income by ZCTA (ACS 5-year)
+
+acs_income_raw <- get_acs(
+  geography = "zcta",
+  variables = "B19013_001",   # Median household income
+  year = acs_year,
+  survey = "acs5",
+  geometry = FALSE,
+  cache_table = TRUE
+)
+
+glimpse(acs_income_raw)
+
+# Clean, rename, and remove ZIPs with missing income
+
+acs_income_clean <- acs_income_raw %>%
+  transmute(
+    Zipcode = GEOID,
+    Income = estimate
+  ) %>%
+  filter(!is.na(Income)) 
+
+write_csv(
+  acs_income_clean,
+  file.path("data/courseproject", "acs_2023_income_zcta.csv")
+)
+
+glimpse(acs_income_clean)
+
+```
+
+
+```{r setup-colors, include=FALSE}
+mta_blue <- "#0039A6"
+```
+
+
+
+
+
+```{r income-table, message=FALSE, warning=FALSE}
+library(dplyr)
+library(DT)
+library(htmltools)
+
+# Use the same global Calibri + title + striping CSS as the crime table
+custom_css <- tags$style(HTML("
+  table.dataTable,
+  table.dataTable th,
+  table.dataTable td,
+  div.dataTables_info,
+  div.dataTables_paginate,
+  div.dataTables_filter,
+  div.dataTables_length,
+  .dataTables_wrapper {
+    font-family: Calibri, sans-serif !important;
+  }
+
+  caption {
+    background-color: #0039A6 !important;
+    color: white !important;
+    padding: 10px;
+    font-size: 120% !important;
+    font-weight: bold !important;
+    caption-side: top !important;
+    text-align: center !important;
+  }
+
+  table.dataTable tbody tr:nth-child(odd) {
+    background-color: white !important;
+  }
+  table.dataTable tbody tr:nth-child(even) {
+    background-color: #efefef !important;
+  }
+
+  table.dataTable tbody tr:hover {
+    background-color: #e0e0e0 !important;
+  }
+"))
+
+# Display-friendly dataset
+income_display <- acs_income_clean %>%
+  transmute(
+    Zipcode        = Zipcode,
+    `Median Income` = Income
+  )
+
+income_dt <- datatable(
+  income_display,
+  rownames = FALSE,
+  caption = "Median Household Income by Zip Code (ACS 2023)",
+  options = list(
+    pageLength   = 10,
+    lengthChange = FALSE,
+    autoWidth    = TRUE,
+    scrollX      = FALSE,
+    dom          = 'tpif',
+    columnDefs = list(
+      list(width = '40%', targets = 0),  # Zipcode
+      list(width = '60%', targets = 1)   # Median Income
+    )
+  ),
+  class = 'display compact'
+) %>%
+  formatCurrency(
+    "Median Income",
+    currency = "$",
+    interval = 3,
+    mark = ",",
+    digits = 0
+  ) %>%
+  htmlwidgets::prependContent(custom_css)
+
+income_dt
+```
+
+
+
+## Joining Data Sets
+
+To link crimes to neighborhood conditions, we first assign each crime incident to a ZIP Codeusing its latitude and longitude. This is done by performing a spatial join between the point locations of crimes and the polygon boundaries of Zipcodes obtained from the U.S. Census. Once each crime has a ZIP code, we merge the crime data with the ACS income data so that every incident carries the median income of its surrounding neighborhood. From this joint dataset, we then compute ZIP-level summaries and present them in an interactive, styled table that shows both median income and total subway crime by ZIP code.
+
+
+
+
+```{r crime_zip_income_table}
+# Crime + Zip + Income joint dataset and detailed table
+
+library(tigris)
+library(sf)
+library(dplyr)
+library(DT)
+library(htmltools)
+
+options(tigris_use_cache = TRUE)
+
+# 1. Get ZCTA polygons and detect the ID column
+zctas <- zctas(year = 2020)
+zctas_sf <- st_transform(zctas, crs = 4326)
+
+id_candidates <- c("GEOID", "GEOID10", "GEOID20", "ZCTA5CE10", "ZCTA5CE20")
+zip_col <- intersect(names(zctas_sf), id_candidates)[1]
+
+if (is.na(zip_col) || length(zip_col) == 0) {
+  stop("Could not find a suitable ZCTA ID column in zctas_sf.")
+}
+
+zctas_sf_small <- zctas_sf[, zip_col, drop = FALSE]
+
+# 2. Convert crime_clean to sf points using longitude and latitude
+crime_sf <- st_as_sf(
+  crime_clean,
+  coords = c("longitude", "latitude"),
+  crs = 4326,
+  remove = FALSE
+)
+
+# 3. Spatial join: assign ZCTA ID to each crime point
+crime_with_zcta <- st_join(
+  crime_sf,
+  zctas_sf_small,
+  join = st_within,
+  left = TRUE
+)
+
+# 4. Drop geometry, rename ZCTA ID column to Zipcode
+crime_with_zip <- crime_with_zcta %>%
+  st_drop_geometry()
+
+names(crime_with_zip)[names(crime_with_zip) == zip_col] <- "Zipcode"
+
+# 5. Merge crime data with ACS income by Zipcode
+crime_with_income <- crime_with_zip %>%
+  left_join(acs_income_clean, by = "Zipcode")
+
+# 6. Keep only rows with valid ZIP and Income and select key variables
+crime_detail_full <- crime_with_income %>%
+  filter(!is.na(Zipcode), !is.na(Income))
+
+wanted_cols <- c(
+  "cmplnt_num",
+  "date",
+  "borough",
+  "offense",
+  "Law_cat_cd",
+  "Zipcode",
+  "Income"
+)
+
+crime_detail_full <- crime_detail_full %>%
+  select(any_of(wanted_cols))
+
+crime_detail_table <- crime_detail_full
+
+# 7. Build interactive detailed crime-level datatable
+
+crime_dt <- datatable(
+  crime_detail_table,
+  rownames = FALSE,
+  colnames = gsub(
+    pattern = "_",
+    replacement = " ",
+    x = names(crime_detail_table)
+  ),
+  options = list(
+    pageLength = 10,
+    autoWidth = TRUE,
+    scrollX = FALSE,                   
+    #scrolling off
+    dom = '<"top">t<"bottom"ipf>',
+    initComplete = JS(
+      "function() {",
+      "  var api = this.api();",
+      "  var $table = $(api.table().container());",
+      "  var $filter = $table.find('div.dataTables_filter');",
+      "  $filter.appendTo($table.find('div.bottom'));",
+      "}"
+    )
+  ),
+  class = "cell-border stripe hover"
+) %>%
+  {
+    if ("Income" %in% names(crime_detail_table)) {
+      formatCurrency(
+        .,
+        "Income",
+        currency = "$",
+        interval = 3,
+        mark = ",",
+        digits = 0
+      )
+    } else {
+      .
+    }
+  }
+
+crime_detail_widget <- tagList(
+  tags$style(HTML("
+      div.dataTables_wrapper {
+        width: 800px !important;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      table.dataTable {
+        font-family: Calibri, Arial, sans-serif;
+      }
+      /* allow cell text to wrap instead of forcing horizontal scroll */
+      table.dataTable tbody td {
+        white-space: normal !important;
+      }
+      table.dataTable.stripe tbody tr.even {
+        background-color: #f2f2f2;
+      }
+      table.dataTable.stripe tbody tr.odd {
+        background-color: #ffffff;
+      }
+  ")),
+  tags$div(
+    style = "width:800px; margin-left:auto; margin-right:auto;",
+    tags$div(
+      style = paste0(
+        "background-color:", mta_blue, ";",
+        "color:white;",
+        "font-family:Calibri, Arial, sans-serif;",
+        "font-size:20px;",
+        "text-align:center;",
+        "padding:8px;",
+        "border-radius:4px;",
+        "margin-bottom:8px;"
+      ),
+      "Subway Crime Records with Zip Code and Median Income"
+    ),
+    crime_dt
+  )
+)
+
+crime_detail_widget
+
+```
+## Ridership Data Download
+
+For ridership, we use the MTA’s published average weekday ridership for each station in a given year. This measure reflects the typical number of riders using a station on a weekday and does not include weekend travel. While this means it does not capture total subway usage, average weekday ridership provides a stable and commonly used proxy for overall transit activity. It is less sensitive to short term fluctuations and reporting noise, which makes it appropriate for neighborhood level comparisons over time.
+
+The ridership data was downloaded directly from the MTA’s published Excel file so the analysis could be done with a consistent, up-to-date source. After loading the file, the dataset was cleaned by keeping only real station rows, selecting the ridership years from 2018 to 2023, renaming the columns, and removing extra headers. Ridership numbers were rounded, and a new average ridership value was created along with a rank based on that average. 
+
+Because the ridership file did not include geographic coordinates, a separate MTA origin-destination dataset was used to obtain latitude and longitude for subway station complexes. Those coordinates were then used to assign each station to a ZIP Code (ZCTA) through spatial matching. The ZIP codes allow station ridership to be linked to neighborhood-level data, making it possible to study how subway usage varies across different areas and to connect ridership patterns to local socioeconomic characteristics later in the analysis.
+
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+## Ridership Data Download
+
+library(httr2)
+library(readxl)
+library(dplyr)
+library(readr)
+library(DT)
+library(htmltools)
+
+dir.create("data/courseproject", recursive = TRUE, showWarnings = FALSE)
+
+station_ridership_url  <- "https://www.mta.info/document/137106"
+station_ridership_path <- file.path("data", "courseproject", "station_ridership.xlsx")
+
+# Download the Excel file once, then reuse it
+if (!file.exists(station_ridership_path)) {
+  request(station_ridership_url) |>
+    req_perform(path = station_ridership_path)
+}
+
+# Read the FIRST sheet (sheet name in the file is a bit messy)
+station_ridership_raw <- read_excel(station_ridership_path)
+
+station_ridership_clean <- station_ridership_raw %>%
+  rename(
+    Station    = `Average Weekday Subway Ridership`,
+    Borough    = ...3,
+    rid_2018   = ...4,
+    rid_2019   = ...5,
+    rid_2020   = ...6,
+    rid_2021   = ...7,
+    rid_2022   = ...8,
+    rid_2023   = ...9,
+    Rank_2023  = ...12
+  ) %>%
+  filter(
+    !is.na(Station),
+    Station != "Station (alphabetical by borough)"
+  ) %>%
+  filter(
+    !is.na(Borough),
+    Borough %in% c("Bx", "B", "M", "Q", "SI")
+  ) %>%
+  select(
+    Station,
+    Borough,
+    rid_2018,
+    rid_2019,
+    rid_2020,
+    rid_2021,
+    rid_2022,
+    rid_2023
+  ) %>%
+  # round ridership to whole numbers
+  mutate(
+    across(starts_with("rid_"), ~ round(., 0))
+  ) %>%
+  # average across 2018–2023 and rank by that average
+  mutate(
+    Avg_2018_2023 = round(rowMeans(across(starts_with("rid_")), na.rm = TRUE), 0),
+    Avg_Rank      = min_rank(dplyr::desc(Avg_2018_2023))
+  )
+
+# 2023-only version for normalization later
+station_ridership_2023 <- station_ridership_clean %>%
+  select(
+    Station,
+    Borough,
+    Ridership_2023 = rid_2023
+  )
+
+# Save cleaned datasets
+write_csv(
+  station_ridership_clean,
+  file.path("data/courseproject", "station_ridership_annual_2018_2023_clean.csv")
+)
+
+write_csv(
+  station_ridership_2023,
+  file.path("data/courseproject", "station_ridership_2023_clean.csv")
+)
+
+# Interactive table
+
+if (!exists("mta_blue")) {
+  mta_blue <- "#0039A6"
+}
+
+ridership_dt <- datatable(
+  station_ridership_clean,
+  rownames = FALSE,
+  colnames = c(
+    "Station",
+    "Borough",
+    "2018",
+    "2019",
+    "2020",
+    "2021",
+    "2022",
+    "2023",
+    "2018–2023 Avg.",
+    "Avg. Rank"
+  ),
+  options = list(
+    pageLength = 10,
+    autoWidth  = FALSE,
+    scrollX    = FALSE,
+    dom        = '<"top">t<"bottom"ipf>',
+    columnDefs = list(
+      list(width = "220px", targets = 0),           
+      list(width = "40px",  targets = 1),         
+      list(width = "75px",  targets = 2:8),       
+      list(width = "70px",  targets = 9),         
+      list(className = "dt-right", targets = 2:9)  
+    ),
+    initComplete = JS(
+      "function() {",
+      "  var api = this.api();",
+      "  var $table = $(api.table().container());",
+      "  var $filter = $table.find('div.dataTables_filter');",
+      "  $filter.appendTo($table.find('div.bottom'));",
+      "}"
+    )
+  ),
+  class = "cell-border stripe hover compact"
+)
+
+ridership_widget <- tagList(
+  tags$style(HTML("
+      div.dataTables_wrapper {
+        max-width: 950px;
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      table.dataTable th,
+      table.dataTable td {
+        padding: 4px 6px;
+      }
+      table.dataTable {
+        font-family: Calibri, Arial, sans-serif;
+      }
+      table.dataTable.stripe tbody tr.even {
+        background-color: #f2f2f2;
+      }
+      table.dataTable.stripe tbody tr.odd {
+        background-color: #ffffff;
+      }
+  ")),
+  tags$div(
+    style = "max-width:950px; width:100%; margin-left:auto; margin-right:auto;",
+    tags$div(
+      style = paste0(
+        "background-color:", mta_blue, ";",
+        "color:white;",
+        "font-family:Calibri, Arial, sans-serif;",
+        "font-size:20px;",
+        "text-align:center;",
+        "padding:8px;",
+        "border-radius:4px;",
+        "margin-bottom:8px;"
+      ),
+      "Annual Station Ridership, 2018–2023"
+    ),
+    ridership_dt
+  )
+)
+
+ridership_widget
+
+
+```
+
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+
+## Station complex lookup (ID, name, lat, lon) from API DOWNLOAD ORIGIN DATA FOR COMPLEX LAT LONG
+library(httr2)
+library(readr)
+library(dplyr)
+
+dir.create("data/courseproject", recursive = TRUE, showWarnings = FALSE)
+
+stations_path <- file.path("data/courseproject", "od_station_complexes_2024.csv")
+base_url <- "https://data.ny.gov/resource/jsu2-fbtj.csv"
+app_token <- Sys.getenv("SOCRATA_APP_TOKEN")  # optional
+
+req <- request(base_url) |>
+  req_url_query(
+    `$select` = paste(
+      "origin_station_complex_id",
+      "origin_station_complex_name",
+      "origin_latitude",
+      "origin_longitude",
+      sep = ","
+    ),
+    `$where` = "origin_station_complex_id is not null",
+    `$limit` = 50000
+  ) |>
+  req_user_agent("STA9750-courseproject") |>
+  req_retry(max_tries = 5)
+
+if (nzchar(app_token)) {
+  req <- req |> req_headers(`X-App-Token` = app_token)
+}
+
+tmp <- tempfile(fileext = ".csv")
+req |> req_perform(path = tmp)
+
+od_stations <- read_csv(tmp, show_col_types = FALSE) |>
+  transmute(
+    complex_id = origin_station_complex_id,
+    Station    = origin_station_complex_name,
+    lat        = as.numeric(origin_latitude),
+    lon        = as.numeric(origin_longitude)
+  ) |>
+  filter(!is.na(complex_id), !is.na(lat), !is.na(lon)) |>
+  distinct(complex_id, .keep_all = TRUE) |>
+  arrange(Station)
+
+write_csv(od_stations, stations_path)
+
+glimpse(od_stations)
+
+
+```
+
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+# zipcode assign to station
+
+library(sf)
+library(dplyr)
+library(readr)
+library(tigris)
+
+options(tigris_use_cache = TRUE)
+
+lookup_path <- file.path("data/courseproject", "station_complex_zip_lookup.csv")
+od_path <- file.path("data/courseproject", "od_station_complexes_2024.csv")
+
+# read OD stations
+od_stations <- read_csv(od_path, show_col_types = FALSE)
+
+stations_sf <- od_stations %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
+
+# Use ALL NY ZCTAs (no bbox filter). This is still fine for 424 points.
+ny_zctas <- tigris::zctas(state = "NY", year = 2010) %>%
+  st_transform(4326) %>%
+  select(ZCTA = ZCTA5CE10)
+
+# 1) primary join (intersects)
+stations_joined <- st_join(stations_sf, ny_zctas, join = st_intersects, left = TRUE)
+
+# 2) fallback: if ZCTA is NA, assign nearest ZCTA polygon
+missing_idx <- which(is.na(stations_joined$ZCTA))
+
+if (length(missing_idx) > 0) {
+  nearest <- st_nearest_feature(stations_joined[missing_idx, ], ny_zctas)
+  stations_joined$ZCTA[missing_idx] <- ny_zctas$ZCTA[nearest]
+}
+
+station_zip_lookup <- stations_joined %>%
+  st_drop_geometry() %>%
+  transmute(
+    complex_id,
+    Station,
+    Zipcode = ZCTA
+  ) %>%
+  distinct(complex_id, .keep_all = TRUE) %>%
+  arrange(Station)
+
+write_csv(station_zip_lookup, lookup_path)
+
+station_zip_lookup %>%
+  summarise(total = n(), missing_zip = sum(is.na(Zipcode)))
+
+```
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(stringr)
+
+lookup_path <- file.path("data/courseproject", "station_complex_zip_lookup.csv")
+
+station_zip_lookup <- read_csv(lookup_path, show_col_types = FALSE)
+
+norm_station <- function(x) {
+  x %>%
+    str_to_lower() %>%
+    str_replace_all("\\.", "") %>%
+    str_replace_all("\\s+", " ") %>%
+    str_trim()
+}
+
+od_with_zip <- station_zip_lookup %>%
+  mutate(Station_norm = norm_station(Station)) %>%
+  select(Station_norm, Zipcode)
+
+ridership_norm <- station_ridership_clean %>%
+  mutate(Station_norm = norm_station(Station))
+
+matches <- sapply(
+  ridership_norm$Station_norm,
+  function(nm) which.min(adist(nm, od_with_zip$Station_norm))
+)
+
+station_ridership_with_zip <- ridership_norm %>%
+  mutate(Zipcode = od_with_zip$Zipcode[matches]) %>%
+  select(-Station_norm)
+
+station_ridership_with_zip %>%
+  summarise(
+    total_stations = n(),
+    matched_zip    = sum(!is.na(Zipcode)),
+    missing_zip    = sum(is.na(Zipcode))
+  )
+
+#Save the final ridership + ZIP file
+write_csv(
+  station_ridership_with_zip,
+  file.path("data/courseproject", "station_ridership_with_zip.csv")
+)
+
+```
+
+
+```{r}
+# Ridership Data Download + ZIP table
+
+library(httr2)
+library(readxl)
+library(dplyr)
+library(readr)
+library(DT)
+library(htmltools)
+library(stringr)
+
+dir.create("data/courseproject", recursive = TRUE, showWarnings = FALSE)
+
+station_ridership_url  <- "https://www.mta.info/document/137106"
+station_ridership_path <- file.path("data", "courseproject", "station_ridership.xlsx")
+
+# Download the Excel file once, then reuse it
+if (!file.exists(station_ridership_path)) {
+  request(station_ridership_url) |>
+    req_perform(path = station_ridership_path)
+}
+
+# Read the FIRST sheet (sheet name in the file is a bit messy)
+station_ridership_raw <- read_excel(station_ridership_path)
+
+station_ridership_clean <- station_ridership_raw %>%
+  rename(
+    Station    = `Average Weekday Subway Ridership`,
+    Borough    = ...3,
+    rid_2018   = ...4,
+    rid_2019   = ...5,
+    rid_2020   = ...6,
+    rid_2021   = ...7,
+    rid_2022   = ...8,
+    rid_2023   = ...9,
+    Rank_2023  = ...12
+  ) %>%
+  filter(
+    !is.na(Station),
+    Station != "Station (alphabetical by borough)"
+  ) %>%
+  filter(
+    !is.na(Borough),
+    Borough %in% c("Bx", "B", "M", "Q", "SI")
+  ) %>%
+  select(
+    Station,
+    Borough,
+    rid_2018,
+    rid_2019,
+    rid_2020,
+    rid_2021,
+    rid_2022,
+    rid_2023
+  ) %>%
+  # round ridership to whole numbers
+  mutate(
+    across(starts_with("rid_"), ~ round(., 0))
+  ) %>%
+  # average across 2018–2023 and rank by that average
+  mutate(
+    Avg_2018_2023 = round(rowMeans(across(starts_with("rid_")), na.rm = TRUE), 0),
+    Avg_Rank      = min_rank(dplyr::desc(Avg_2018_2023))
+  )
+
+# 2023-only version for normalization later
+station_ridership_2023 <- station_ridership_clean %>%
+  select(
+    Station,
+    Borough,
+    Ridership_2023 = rid_2023
+  )
+
+# Save cleaned datasets
+write_csv(
+  station_ridership_clean,
+  file.path("data/courseproject", "station_ridership_annual_2018_2023_clean.csv")
+)
+
+write_csv(
+  station_ridership_2023,
+  file.path("data/courseproject", "station_ridership_2023_clean.csv")
+)
+
+# Add ZIP codes 
+lookup_path <- file.path("data/courseproject", "station_complex_zip_lookup.csv")
+station_zip_lookup <- read_csv(lookup_path, show_col_types = FALSE)
+
+norm_station <- function(x) {
+  x %>%
+    str_to_lower() %>%
+    str_replace_all("\\.", "") %>%
+    str_replace_all("\\s+", " ") %>%
+    str_trim()
+}
+
+od_with_zip <- station_zip_lookup %>%
+  mutate(Station_norm = norm_station(Station)) %>%
+  select(Station_norm, Zipcode)
+
+ridership_norm <- station_ridership_clean %>%
+  mutate(Station_norm = norm_station(Station))
+
+matches <- sapply(
+  ridership_norm$Station_norm,
+  function(nm) which.min(adist(nm, od_with_zip$Station_norm))
+)
+
+station_ridership_with_zip <- ridership_norm %>%
+  mutate(Zipcode = od_with_zip$Zipcode[matches]) %>%
+  select(
+    Station,
+    Borough,
+    Zipcode,
+    rid_2018,
+    rid_2019,
+    rid_2020,
+    rid_2021,
+    rid_2022,
+    rid_2023,
+    Avg_2018_2023,
+    Avg_Rank
+  )
+
+write_csv(
+  station_ridership_with_zip,
+  file.path("data/courseproject", "station_ridership_with_zip.csv")
+)
+
+# Interactive table
+
+if (!exists("mta_blue")) {
+  mta_blue <- "#0039A6"
+}
+
+ridership_dt <- datatable(
+  station_ridership_with_zip,
+  rownames = FALSE,
+  colnames = c(
+    "Station",
+    "Borough",
+    "ZIP",
+    "2018",
+    "2019",
+    "2020",
+    "2021",
+    "2022",
+    "2023",
+    "2018–2023 Avg.",
+    "Avg. Rank"
+  ),
+  options = list(
+    pageLength = 10,
+    autoWidth  = FALSE,
+    scrollX    = FALSE,
+    dom        = '<"top">t<"bottom"ipf>',
+    columnDefs = list(
+      list(width = "220px", targets = 0),
+      list(width = "40px",  targets = 1),
+      list(width = "60px",  targets = 2),     # ZIP
+      list(width = "70px",  targets = 3:9),   # years
+      list(width = "85px",  targets = 10),    # avg
+      list(width = "70px",  targets = 11),    # rank
+      list(className = "dt-right", targets = 3:11)
+    ),
+    initComplete = JS(
+      "function() {",
+      "  var api = this.api();",
+      "  var $table = $(api.table().container());",
+      "  var $filter = $table.find('div.dataTables_filter');",
+      "  $filter.appendTo($table.find('div.bottom'));",
+      "}"
+    )
+  ),
+  class = "cell-border stripe hover compact"
+)
+
+ridership_widget <- tagList(
+  tags$style(HTML("
+      div.dataTables_wrapper {
+        max-width: 950px;
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      table.dataTable th,
+      table.dataTable td {
+        padding: 4px 6px;
+      }
+      table.dataTable {
+        font-family: Calibri, Arial, sans-serif;
+      }
+      table.dataTable.stripe tbody tr.even {
+        background-color: #f2f2f2;
+      }
+      table.dataTable.stripe tbody tr.odd {
+        background-color: #ffffff;
+      }
+  ")),
+  tags$div(
+    style = "max-width:950px; width:100%; margin-left:auto; margin-right:auto;",
+    tags$div(
+      style = paste0(
+        "background-color:", mta_blue, ";",
+        "color:white;",
+        "font-family:Calibri, Arial, sans-serif;",
+        "font-size:20px;",
+        "text-align:center;",
+        "padding:8px;",
+        "border-radius:4px;",
+        "margin-bottom:8px;"
+      ),
+      "Annual Station Ridership, 2018–2023"
+    ),
+    ridership_dt
+  )
+)
+
+ridership_widget
+```
+
+
+To analyze subway crime patterns in a consistent way across neighborhoods and across time, we aggregated the data at the ZIP Code and year level. Each subway crime incident was assigned to a ZIP Code using its latitude and longitude, and crimes were then counted within each ZIP Code for each year from 2018 through 2023. This allowed us to compare crime levels across neighborhoods.
+
+Station level average weekday ridership values were summed within each year across all stations located in the same ZIP Code to create a ridership by Zip Code measure. This ensures that crime counts for a given year are normalized using ridership from the same year, rather than mixing ridership levels across different time periods. 
+
+We then normalized crime counts by dividing the number of crime complaints by total ZIP Code ridership and scaling the result to crimes per 100,000 average weekday rides. This normalization step is important because ZIP Codes serve very different numbers of riders, and overall subway usage changed substantially over the study period, especially during the COVID era.
+
+
+
+```{r}
+
+
+
+library(dplyr)
+library(sf)
+library(tigris)
+library(tidyr)
+
+options(tigris_use_cache = TRUE)
+
+# Step 1: Standardize ZIP codes as 5-digit character strings for consistent joins
+fix_zip <- function(x) {
+  sprintf("%05s", as.character(x))
+}
+
+# Step 2: Load NY ZCTA polygons and prepare a 5-digit Zipcode field
+ny_zctas <- tigris::zctas(state = "NY", year = 2010) %>%
+  st_transform(4326) %>%
+  select(Zipcode = ZCTA5CE10) %>%
+  mutate(Zipcode = fix_zip(Zipcode))
+
+# Step 3: Convert crime records into spatial points using longitude and latitude
+crime_sf <- crime_clean %>%
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE)
+
+# Step 4: Spatially join crimes to ZCTAs to assign each crime a Zipcode
+crime_joined <- st_join(crime_sf, ny_zctas, join = st_intersects, left = TRUE)
+
+# Step 5: If any crimes did not fall inside a polygon, assign the nearest ZCTA as a fallback
+miss_idx <- which(is.na(crime_joined$Zipcode))
+
+if (length(miss_idx) > 0) {
+  nearest <- st_nearest_feature(crime_joined[miss_idx, ], ny_zctas)
+  crime_joined$Zipcode[miss_idx] <- ny_zctas$Zipcode[nearest]
+}
+
+# Step 6: Drop geometry and keep a clean crime dataset with Zipcode
+crime_with_zip <- crime_joined %>%
+  st_drop_geometry() %>%
+  mutate(Zipcode = fix_zip(Zipcode))
+
+# Step 7: Standardize ridership ZIP codes so they match the crime ZIP format
+station_ridership_with_zip <- station_ridership_with_zip %>%
+  mutate(Zipcode = fix_zip(Zipcode))
+
+# Step 8: Convert station-level annual ridership columns into a Zipcode-year table
+ridership_zip_year <- station_ridership_with_zip %>%
+  select(Zipcode, rid_2018, rid_2019, rid_2020, rid_2021, rid_2022, rid_2023) %>%
+  pivot_longer(
+    cols = starts_with("rid_"),
+    names_to = "year",
+    values_to = "ridership"
+  ) %>%
+  mutate(
+    year = as.integer(sub("rid_", "", year))
+  ) %>%
+  group_by(Zipcode, year) %>%
+  summarise(
+    zip_ridership = sum(ridership, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Step 9: Count crimes by Zipcode-year and compute crimes per 100,000 rides
+crime_zip_year <- crime_with_zip %>%
+  filter(year %in% 2018:2023) %>%
+  group_by(Zipcode, year) %>%
+  summarise(
+    crime_count = n(),
+    .groups = "drop"
+  ) %>%
+  left_join(ridership_zip_year, by = c("Zipcode", "year")) %>%
+  mutate(
+    crime_per_100k_rides = 1e5 * crime_count / zip_ridership
+  )
+
+# Step 10: Attach the Zipcode-year normalized rate back onto each crime record
+crime_with_rate <- crime_with_zip %>%
+  left_join(
+    crime_zip_year %>% select(Zipcode, year, crime_per_100k_rides),
+    by = c("Zipcode", "year")
+  )
+
+
+```
+
+Some ZIP code–year combinations appear in the table with missing values for both ridership and the normalized crime rate. These rows correspond to ZIP codes where no subway stations are located, and therefore no station-level ridership is recorded for that year. Because crimes per 100,000 rides cannot be computed without a valid ridership denominator, the normalized crime rate is undefined for these ZIP codes. We retain these rows in the table for transparency, but they are excluded from all analyses that require normalized crime rates, including correlation tests and mapping.
+
+
+
+```{r zip-summary-creation, include=FALSE}
+# This chunk ensures 'zip_summary' is created for the map and correlation analysis
+
+# Step 1: Compute crime per 100,000 rides at the ZIP x year level (already computed in previous chunk, but recalculating for safety)
+crime_zip_year <- crime_with_zip %>%
+  mutate(Zipcode = fix_zip(Zipcode)) %>%
+  group_by(Zipcode, year) %>%
+  summarise(crime_count = n(), .groups = "drop") %>%
+  left_join(
+    ridership_zip_year %>% mutate(Zipcode = fix_zip(Zipcode)),
+    by = c("Zipcode", "year")
+  ) %>%
+  mutate(crime_per_100k_rides = 1e5 * crime_count / zip_ridership)
+
+# Step 2: Collapse to one ZIP summary across 2018–2023 and attach ACS income
+zip_summary <- crime_zip_year %>%
+  group_by(Zipcode) %>%
+  summarise(
+    avg_crime_per_100k_rides = mean(crime_per_100k_rides, na.rm = TRUE),
+    total_crimes = sum(crime_count, na.rm = TRUE),
+    total_ridership = sum(zip_ridership, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(
+    acs_income_clean %>% mutate(Zipcode = fix_zip(Zipcode)),
+    by = "Zipcode"
+  ) %>%
+  filter(!is.na(Income), !is.na(avg_crime_per_100k_rides), !is.na(total_crimes))
+
+# Quick check to ensure the object is populated
+message(paste("zip_summary created with", nrow(zip_summary), "rows."))
+```
+
+
+
+```{r}
+library(DT)
+library(htmltools)
+library(dplyr)
+
+custom_css <- tags$style(HTML("
+  table.dataTable,
+  table.dataTable th,
+  table.dataTable td,
+  div.dataTables_info,
+  div.dataTables_paginate,
+  div.dataTables_filter,
+  div.dataTables_length,
+  .dataTables_wrapper {
+    font-family: Calibri, sans-serif !important;
+  }
+
+  caption {
+    background-color: #0039A6 !important;
+    color: white !important;
+    padding: 10px;
+    font-size: 120% !important;
+    font-weight: bold !important;
+    caption-side: top !important;
+    text-align: center !important;
+  }
+
+  table.dataTable tbody tr:hover {
+    background-color: #e0e0e0 !important;
+  }
+"))
+
+# Prepare data for display
+crime_zip_display <- crime_zip_year %>%
+  mutate(
+    crime_per_100k_rides = round(crime_per_100k_rides, 2),
+    zip_ridership = round(zip_ridership, 0)
+  ) %>%
+  transmute(
+    Zipcode = Zipcode,
+    Year = year,
+    `Crime Complaints` = crime_count,
+    `Total Daily Ridership` = zip_ridership,
+    `Crimes per 100,000 rides` = crime_per_100k_rides
+  ) %>%
+  arrange(Year, desc(`Crimes per 100,000 rides`))
+
+datatable(
+  crime_zip_display,
+  rownames = FALSE,
+  caption = "Crime per Ridership by ZIP Code, 2018–2023",
+  options = list(
+    pageLength = 10,
+    lengthChange = FALSE,
+    autoWidth = TRUE,
+    scrollX = FALSE,
+    dom = "tpif",
+    columnDefs = list(
+      list(width = "12%", targets = 0),
+      list(width = "10%", targets = 1),
+      list(width = "18%", targets = 2),
+      list(width = "18%", targets = 3),
+      list(width = "20%", targets = 4),
+      list(className = "dt-right", targets = 2:4)
+    ),
+
+    # Color rows by year using a light orange gradient
+    rowCallback = JS(
+      "function(row, data) {",
+      "  var year = parseInt(data[1]);",
+      "  var colors = {",
+      "    2018: '#fff3e6',",
+      "    2019: '#ffe6cc',",
+      "    2020: '#ffd9b3',",
+      "    2021: '#ffcc99',",
+      "    2022: '#ffbf80',",
+      "    2023: '#ffb366'",
+      "  };",
+      "  if (colors[year]) {",
+      "    $(row).css('background-color', colors[year]);",
+      "  }",
+      "}"
+    )
+  ),
+  class = "display compact"
+) %>%
+  htmlwidgets::prependContent(custom_css)
+
+```
+  This code creates a ZIP Code level dataset that links subway crime exposure to neighborhood income, and then visualizes the relationship. First, crimes are grouped by ZIP Code and year, and the total number of complaints is counted for each ZIP year combination. That crime count is then joined to the matching ZIP year ridership totals, and a normalized rate is computed as crimes per 100,000 rides by dividing crimes by ridership and scaling the result. 
+
+  Next, the code collapses the data across time by taking the average of the yearly normalized crime rates for each ZIP Code from 2018 to 2023. This produces one summary crime rate per ZIP Code that reflects typical crime exposure over the full study period, rather than focusing on a single year that might be unusual. Median household income from the ACS is then joined to this ZIP level summary so that each ZIP Code has both an income value and an average normalized crime rate, and ZIP Codes with missing values are removed.
+
+  After building this final ZIP level dataset, the code runs a Spearman correlation test between income and the average crimes per 100,000 rides. Spearman is used because it tests whether there is a consistent increasing or decreasing relationship between the two variables without requiring the relationship to be perfectly linear or the data to be normally distributed. Finally, the scatterplot visualizes this same comparison by plotting median household income on the x axis and the average crimes per 100,000 rides on the y axis. Each point represents one ZIP Code, so the graph shows whether higher or lower income ZIP Codes tend to have higher or lower crime rates after adjusting for ridership. The fitted trend line is added to summarize the overall direction of the relationship across all ZIP Codes.
+
+###  Map of Median Income by Zipcode and Crime Rate
+
+```{r}
+library(dplyr)
+library(sf)
+library(tigris)
+library(leaflet)
+library(htmltools)
+library(scales)
+
+options(tigris_use_cache = TRUE)
+
+# This helper makes sure ZIP codes are always 5 digit text
+fix_zip <- function(x) sprintf("%05s", as.character(x))
+
+# This function builds the interactive ZIP map
+create_interactive_zip_map <- function(zip_summary) {
+
+  # Step 1: Clean ZIP codes so joins work
+  zip_summary_clean <- zip_summary %>%
+    mutate(
+      Zipcode = fix_zip(Zipcode),
+      Income = as.numeric(Income),
+      avg_crime_per_100k_rides = as.numeric(avg_crime_per_100k_rides),
+      total_crimes = as.numeric(total_crimes)
+    ) %>%
+    filter(
+      !is.na(Zipcode),
+      !is.na(Income),
+      !is.na(avg_crime_per_100k_rides),
+      !is.na(total_crimes)
+    )
+
+  # Step 2: Download NY ZCTA polygons and keep only ZIPs in our dataset
+  ny_zctas <- tigris::zctas(state = "NY", year = 2010) %>%
+    st_transform(4326) %>%
+    transmute(Zipcode = fix_zip(ZCTA5CE10))
+
+  zctas_joined <- ny_zctas %>%
+    left_join(zip_summary_clean, by = "Zipcode") %>%
+    filter(!is.na(Income), !is.na(total_crimes), !is.na(avg_crime_per_100k_rides))
+
+  # Step 3: Create points for bubble placement
+  zctas_points <- st_point_on_surface(zctas_joined)
+
+  # Step 4: Build the income color palette
+  pal_income <- colorNumeric(
+    palette = colorRampPalette(c("red", "yellow", "green"))(256),
+    domain = zctas_joined$Income,
+    na.color = "transparent"
+  )
+
+  # Step 5: Scale bubble radius directly from total crimes
+  crime_min <- min(zctas_points$total_crimes, na.rm = TRUE)
+  crime_max <- max(zctas_points$total_crimes, na.rm = TRUE)
+
+  scale_radius <- function(x, min_r = 3, max_r = 20) {
+    if (is.na(x)) return(min_r)
+    if (crime_min == crime_max) return((min_r + max_r) / 2)
+    min_r + (x - crime_min) * (max_r - min_r) / (crime_max - crime_min)
+  }
+
+  zctas_points <- zctas_points %>%
+    mutate(radius = vapply(total_crimes, scale_radius, numeric(1)))
+
+  # Step 6: Create popup text
+  zctas_joined <- zctas_joined %>%
+    mutate(
+      popup_text = paste0(
+        "<b>ZIP Code:</b> ", Zipcode, "<br>",
+        "<b>Median household income (ACS 2023):</b> ", dollar(Income, accuracy = 1), "<br>",
+        "<b>Total crimes (2018–2023):</b> ", comma(total_crimes), "<br>",
+        "<b>Avg. crimes per 100,000 rides (2018–2023):</b> ", round(avg_crime_per_100k_rides, 2), "<br>",
+        "<b>Total ridership (sum of annual avg weekday ridership, 2018–2023):</b> ", comma(round(total_ridership, 0))
+      )
+    )
+
+  zctas_points <- zctas_points %>%
+    left_join(
+      zctas_joined %>% st_drop_geometry() %>% select(Zipcode, popup_text),
+      by = "Zipcode"
+    )
+
+  # Step 7: Add a simple note explaining bubble scaling
+  bubble_note <- paste0(
+    "<div style='background: white; padding: 10px; border-radius: 6px; border: 1px solid #ccc;'>",
+    "<div style='font-weight: bold; margin-bottom: 6px;'>Bubble size</div>",
+    "<div style='font-size: 12px;'>",
+    "Bubble radius is scaled linearly to total crimes (2018–2023).<br>",
+    "<b>Min:</b> ", comma(round(crime_min, 0)), " crimes<br>",
+    "<b>Max:</b> ", comma(round(crime_max, 0)), " crimes",
+    "</div>",
+    "</div>"
+  )
+
+  # Step 8: Make the map
+  leaflet() %>%
+    addProviderTiles(providers$CartoDB.Positron) %>%
+
+    # Step 9: Add ZIP polygons colored by income
+    addPolygons(
+      data = zctas_joined,
+      fillColor = ~pal_income(Income),
+      fillOpacity = 0.55,
+      color = "#444444",
+      weight = 1,
+      opacity = 0.8,
+      popup = ~popup_text,
+      group = "ZIP income"
+    ) %>%
+
+    # Step 10: Add bubbles sized by total crimes and labeled with crime counts
+    addCircleMarkers(
+      data = zctas_points,
+      radius = ~radius,
+      fillColor = "black",
+      fillOpacity = 0.25,
+      color = "black",
+      weight = 1,
+      popup = ~popup_text,
+      label = ~paste0("Crimes: ", comma(total_crimes)),
+      labelOptions = labelOptions(
+        direction = "top",
+        textsize = "12px",
+        opacity = 0.9
+      ),
+      group = "Crime count bubbles"
+    ) %>%
+
+    # Step 11: Add an income legend
+    addLegend(
+      position = "bottomright",
+      pal = pal_income,
+      values = zctas_joined$Income,
+      title = "Median income (ACS 2023)",
+      labFormat = labelFormat(prefix = "$", big.mark = ",", digits = 0),
+      opacity = 0.95
+    ) %>%
+
+    # Step 12: Add the bubble scaling note
+    addControl(
+      html = HTML(bubble_note),
+      position = "bottomleft"
+    ) %>%
+
+    # Step 13: Add layer controls
+    addLayersControl(
+      overlayGroups = c("ZIP income", "Crime count bubbles"),
+      options = layersControlOptions(collapsed = FALSE)
+    )
+}
+
+interactive_zip_map <- create_interactive_zip_map(zip_summary)
+
+interactive_zip_map
+
+```
+
+
+
+### **Spearman Rank Correlation Analysis**
+
+To formally assess the relationship between neighborhood socioeconomic conditions and subway crime rates, we apply Spearman’s rank correlation test. Spearman’s correlation is a nonparametric measure of association, meaning it does not require the variables to follow a normal distribution or assume a linear relationship. Instead, it evaluates whether two variables move together in a consistent increasing or decreasing pattern. This makes the test well suited for this analysis, as both median household income and normalized subway crime rates vary widely across ZIP codes and may be skewed by extreme values.
+Each observation represents a ZIP Code Tabulation Area. For each ZIP code, median household income from the 2023 American Community Survey is paired with the average subway crime rate per 100,000 average weekday rides, calculated across the years 2018 through 2023. Normalizing crime by ridership ensures that neighborhoods with higher subway usage are not mechanically associated with higher crime counts.
+The Spearman test works by ranking ZIP codes from lowest to highest income and separately ranking them from lowest to highest normalized crime rates. The test then evaluates whether higher income ranks tend to be associated with higher or lower crime rate ranks.
+
+The hypotheses for the test are defined as follows:
+
+**H₀: There is no monotonic relationship between median household income and normalized subway crime rates across ZIP codes (ρ = 0).**
+
+**Hₐ: There is a monotonic relationship between median household income and normalized subway crime rates across ZIP codes (ρ ≠ 0).**
+
+The results of the Spearman correlation test yield a correlation coefficient of ρ = −0.3819, with a test statistic S = 368,854 and a p value of 2.482 × 10⁻⁵. The negative value of the correlation indicates that ZIP codes with higher median household income tend to have lower subway crime rates per 100,000 rides. Because the p value is far below standard significance thresholds, we reject the null hypothesis.
+Overall, these findings provide strong evidence of a statistically significant negative association between neighborhood income levels and normalized subway crime rates. While this analysis does not imply causation, it suggests that socioeconomic conditions are closely related to variation in subway crime across New York City neighborhoods.
+
+Because normalized crime rates can become extreme in ZIP codes with very low ridership, we conduct a robustness check using a rule-of-thumb outlier procedure. Specifically, we identify outliers in the average crimes per 100,000 rides variable using the interquartile range (IQR) criterion and temporarily exclude ZIP codes falling outside 1.5×IQR from the Spearman correlation test. This sensitivity analysis is not used as the primary result, but rather to verify that the observed relationship is not driven by a small number of extreme rate values. The direction and statistical significance of the correlation remain substantively unchanged after trimming, indicating that the main findings are robust to reasonable outlier handling choices.
+
+```{r}
+
+# Create Spearman table
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(DT)
+
+if (!exists("zip_summary")) {
+  stop("zip_summary not found. This chunk must be placed after zip_summary is created.")
+}
+
+rate_vec <- zip_summary$avg_crime_per_100k_rides
+
+q1 <- as.numeric(quantile(rate_vec, 0.25, na.rm = TRUE))
+q3 <- as.numeric(quantile(rate_vec, 0.75, na.rm = TRUE))
+iqr_val <- q3 - q1
+
+lower_bound <- q1 - 1.5 * iqr_val
+upper_bound <- q3 + 1.5 * iqr_val
+
+zip_summary_trimmed <- zip_summary %>%
+  filter(
+    !is.na(Income),
+    !is.na(avg_crime_per_100k_rides),
+    avg_crime_per_100k_rides >= lower_bound,
+    avg_crime_per_100k_rides <= upper_bound
+  )
+
+spearman_full <- cor.test(
+  zip_summary$Income,
+  zip_summary$avg_crime_per_100k_rides,
+  method = "spearman",
+  exact = FALSE
+)
+
+spearman_trimmed <- cor.test(
+  zip_summary_trimmed$Income,
+  zip_summary_trimmed$avg_crime_per_100k_rides,
+  method = "spearman",
+  exact = FALSE
+)
+
+spearman_table <- tibble(
+  Sample = c("Full sample", "IQR-trimmed sample"),
+  ZIP_Count = c(nrow(zip_summary), nrow(zip_summary_trimmed)),
+  Q1 = q1,
+  Q3 = q3,
+  IQR = iqr_val,
+  Lower_Bound = lower_bound,
+  Upper_Bound = upper_bound,
+  S = c(unname(spearman_full$statistic), unname(spearman_trimmed$statistic)),
+  rho = c(unname(spearman_full$estimate), unname(spearman_trimmed$estimate)),
+  p_value = c(spearman_full$p.value, spearman_trimmed$p.value)
+)
+
+datatable(
+  spearman_table,
+  rownames = FALSE,
+  options = list(
+    pageLength = 2,
+    dom = "t",
+    autoWidth = TRUE
+  ),
+  caption = "Spearman Correlation Robustness Check"
+) %>%
+  formatRound(
+    columns = c("Q1", "Q3", "IQR", "Lower_Bound", "Upper_Bound", "rho"),
+    digits = 4
+  ) %>%
+  formatSignif(columns = "p_value", digits = 4)
+
+# plot
+
+ggplot(zip_summary_trimmed, aes(x = Income, y = avg_crime_per_100k_rides)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_x_continuous(labels = dollar_format(accuracy = 1)) +
+  labs(
+    title = "Median Income vs Subway Crime Rate by ZIP Code (IQR-Trimmed)",
+    x = "Median household income (ACS 2023)",
+    y = "Average crimes per 100,000 rides (2018–2023)"
+  )
+```
+
+## Conclusion
+
+A key limitation of this analysis is the imperfect measurement of exposure. Subway ridership data are not available at the ZIP code level, so station ridership had to be spatially assigned to ZIP codes based on station locations. This approach does not fully capture how riders move across neighborhoods or where trips actually begin and end, which may introduce measurement error in the normalized crime rates. 
+
+Future work could improve this analysis by incorporating additional socioeconomic indicators beyond median income, such as unemployment, housing instability, or educational attainment. Finally, organizing and analyzing crime by offense type could reveal whether certain crimes are more strongly associated with specific neighborhood characteristics, providing a more nuanced understanding of how socioeconomic conditions relate to subway crime risk for policy initiatives.
